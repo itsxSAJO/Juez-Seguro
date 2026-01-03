@@ -37,7 +37,7 @@ export const Header = () => {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6" aria-label="Navegación principal">
             <Link 
-              to="/" 
+              to="/ciudadano" 
               className="text-sm font-medium text-primary-foreground/90 hover:text-primary-foreground transition-colors"
             >
               Búsqueda
@@ -48,6 +48,12 @@ export const Header = () => {
             >
               <HelpCircle className="w-4 h-4" aria-hidden="true" />
               Ayuda
+            </Link>
+            <Link 
+              to="/funcionarios/login" 
+              className="text-sm font-medium text-primary-foreground/90 hover:text-primary-foreground transition-colors"
+            >
+              Funcionarios
             </Link>
           </nav>
 
@@ -78,7 +84,7 @@ export const Header = () => {
           >
             <div className="flex flex-col gap-2">
               <Link 
-                to="/" 
+                to="/ciudadano" 
                 className="px-4 py-2 text-sm font-medium text-primary-foreground/90 hover:bg-primary-foreground/10 rounded-md transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
@@ -91,6 +97,13 @@ export const Header = () => {
               >
                 <HelpCircle className="w-4 h-4" aria-hidden="true" />
                 Ayuda
+              </Link>
+              <Link 
+                to="/funcionarios/login" 
+                className="px-4 py-2 text-sm font-medium text-primary-foreground/90 hover:bg-primary-foreground/10 rounded-md transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Funcionarios
               </Link>
             </div>
           </nav>
