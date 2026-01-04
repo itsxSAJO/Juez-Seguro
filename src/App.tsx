@@ -22,6 +22,12 @@ import AccesoDenegado from "./pages/funcionarios/AccesoDenegado";
 import GestionCuentas from "./pages/funcionarios/GestionCuentas";
 import ListaCausas from "./pages/funcionarios/ListaCausas";
 import NuevaCausa from "./pages/funcionarios/NuevaCausa";
+import ExpedienteCausa from "./pages/funcionarios/ExpedienteCausa";
+import GestionDocumentos from "./pages/funcionarios/GestionDocumentos";
+import AgendaAudiencias from "./pages/funcionarios/AgendaAudiencias";
+import EditorDecisiones from "./pages/funcionarios/EditorDecisiones";
+import GestionNotificaciones from "./pages/funcionarios/GestionNotificaciones";
+import CentroAuditoria from "./pages/funcionarios/CentroAuditoria";
 
 const queryClient = new QueryClient();
 
@@ -78,6 +84,54 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRoles={["secretario"]}>
                   <NuevaCausa />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionarios/causas/:id"
+              element={
+                <ProtectedRoute allowedRoles={["juez", "secretario"]}>
+                  <ExpedienteCausa />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionarios/documentos"
+              element={
+                <ProtectedRoute allowedRoles={["juez", "secretario"]}>
+                  <GestionDocumentos />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionarios/audiencias"
+              element={
+                <ProtectedRoute>
+                  <AgendaAudiencias />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionarios/decisiones"
+              element={
+                <ProtectedRoute allowedRoles={["juez"]}>
+                  <EditorDecisiones />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionarios/notificaciones"
+              element={
+                <ProtectedRoute allowedRoles={["secretario"]}>
+                  <GestionNotificaciones />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionarios/auditoria"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <CentroAuditoria />
                 </ProtectedRoute>
               }
             />

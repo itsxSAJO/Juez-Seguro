@@ -68,6 +68,12 @@ const navItems: NavItem[] = [
     roles: ["juez", "secretario"]
   },
   { 
+    icon: Scale, 
+    label: "Editor de Decisiones", 
+    href: "/funcionarios/decisiones",
+    roles: ["juez"]
+  },
+  { 
     icon: Bell, 
     label: "Notificaciones", 
     href: "/funcionarios/notificaciones",
