@@ -1,145 +1,234 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from "react";
 
 // ============================================================================
 // ROLES DE FUNCIONARIOS - Sistema según Common Criteria
 // ============================================================================
-// - cj: Consejo de la Judicatura (administración de cuentas y supervisión)
-// - juez: Gestión de causas asignadas y emisión de decisiones
-// - secretario: Ingreso de causas, gestión documental y notificaciones
+// - ADMIN_CJ: Consejo de la Judicatura (administración de cuentas y supervisión)
+// - JUEZ: Gestión de causas asignadas y emisión de decisiones
+// - SECRETARIO: Ingreso de causas, gestión documental y notificaciones
 //
 // NOTA: El ciudadano NO tiene credenciales. Accede al portal público /ciudadano
 // para consultar procesos con datos anonimizados.
 // ============================================================================
-export type UserRole = "cj" | "juez" | "secretario";
+export type UserRole = "ADMIN_CJ" | "JUEZ" | "SECRETARIO";
 
-export interface MockUser {
-  id: string;
+// Mapeo para compatibilidad con UI existente
+export type UIRole = "cj" | "juez" | "secretario";
+
+const roleMapping: Record<UserRole, UIRole> = {
+  "ADMIN_CJ": "cj",
+  "JUEZ": "juez",
+  "SECRETARIO": "secretario"
+};
+
+export interface User {
+  id: number;
   nombre: string;
   identificacion: string;
-  cargo: UserRole;
+  cargo: UIRole;
+  rol: UserRole;
   unidadJudicial: string;
   materia: string;
   email: string;
-  estado: "activa" | "suspendida" | "inactiva";
-  intentosFallidos: number;
+  estado: "ACTIVA" | "SUSPENDIDA" | "INACTIVA" | "BLOQUEADA" | "HABILITABLE";
 }
 
 interface AuthContextType {
-  user: MockUser | null;
+  user: User | null;
+  token: string | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ============================================================================
-// USUARIOS DE PRUEBA - FUNCIONARIOS DEMO
-// Solo funcionarios judiciales tienen credenciales de acceso.
-// El ciudadano accede al portal público /ciudadano sin autenticación.
-// ============================================================================
-const mockUsers: (MockUser & { password: string })[] = [
-  {
-    id: "1",
-    nombre: "Dr. María García López",
-    identificacion: "1712345678",
-    cargo: "cj",
-    unidadJudicial: "Consejo de la Judicatura",
-    materia: "Administración",
-    email: "cj@judicatura.gob.ec",
-    password: "cj123",
-    estado: "activa",
-    intentosFallidos: 0,
-  },
-  {
-    id: "2",
-    nombre: "Dr. Carlos Mendoza Ruiz",
-    identificacion: "0912345678",
-    cargo: "juez",
-    unidadJudicial: "Unidad Judicial Civil de Quito",
-    materia: "Civil",
-    email: "juez@judicatura.gob.ec",
-    password: "juez123",
-    estado: "activa",
-    intentosFallidos: 0,
-  },
-  {
-    id: "3",
-    nombre: "Lic. Ana Martínez Silva",
-    identificacion: "0612345678",
-    cargo: "secretario",
-    unidadJudicial: "Unidad Judicial Penal de Guayaquil",
-    materia: "Penal",
-    email: "secretario@judicatura.gob.ec",
-    password: "secretario123",
-    estado: "activa",
-    intentosFallidos: 0,
-  },
-  {
-    id: "4",
-    nombre: "Dr. Juan Pérez Blocked",
-    identificacion: "0712345678",
-    cargo: "juez",
-    unidadJudicial: "Unidad Judicial Laboral",
-    materia: "Laboral",
-    email: "bloqueado@judicatura.gob.ec",
-    password: "blocked123",
-    estado: "suspendida",
-    intentosFallidos: 5,
-  },
-];
+// API Base URL
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+
+// Clave para sessionStorage (más seguro que localStorage para tokens)
+const TOKEN_KEY = "auth_token";
+
+/**
+ * Decodifica un JWT para extraer el payload (sin verificar firma)
+ * La verificación real se hace en el backend
+ */
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifica si un token JWT ha expirado
+ */
+function isTokenExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return true;
+  
+  // exp está en segundos, Date.now() en milisegundos
+  return Date.now() >= payload.exp * 1000;
+}
+
+/**
+ * Extrae los datos del usuario del token JWT
+ */
+function getUserFromToken(token: string): User | null {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+
+  return {
+    id: payload.funcionarioId,
+    nombre: "", // Se obtiene del backend en login, no guardamos en storage
+    identificacion: payload.identificacion,
+    cargo: roleMapping[payload.rol as UserRole] || "secretario",
+    rol: payload.rol,
+    unidadJudicial: payload.unidadJudicial,
+    materia: payload.materia,
+    email: payload.correo,
+    estado: "ACTIVA", // Si tiene token válido, asumimos activa
+  };
+}
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<MockUser | null>(() => {
-    const stored = localStorage.getItem("mockUser");
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Restaurar sesión al cargar - Solo desde sessionStorage, no localStorage
+  useEffect(() => {
+    const restoreSession = async () => {
+      // Usar sessionStorage en lugar de localStorage (se limpia al cerrar navegador)
+      const storedToken = sessionStorage.getItem(TOKEN_KEY);
+
+      if (storedToken) {
+        // Verificar si el token no ha expirado
+        if (!isTokenExpired(storedToken)) {
+          const userFromToken = getUserFromToken(storedToken);
+          if (userFromToken) {
+            setToken(storedToken);
+            setUser(userFromToken);
+          } else {
+            // Token inválido
+            sessionStorage.removeItem(TOKEN_KEY);
+          }
+        } else {
+          // Token expirado, limpiar
+          sessionStorage.removeItem(TOKEN_KEY);
+        }
+      }
+
+      // Limpiar datos antiguos de localStorage si existen (migración)
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      
+      setIsLoading(false);
+    };
+
+    restoreSession();
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ correo: email, password }),
+      });
 
-    const foundUser = mockUsers.find((u) => u.email === email);
+      const data = await response.json();
 
-    if (!foundUser) {
-      return { success: false, error: "Usuario no encontrado" };
-    }
+      if (!response.ok) {
+        // Manejar errores específicos
+        if (data.code === "USER_NOT_FOUND") {
+          return { success: false, error: "Usuario no encontrado" };
+        }
+        if (data.code === "INVALID_PASSWORD") {
+          return { 
+            success: false, 
+            error: `Contraseña incorrecta. Intento ${data.intentosFallidos || 1} de 5.` 
+          };
+        }
+        if (data.code === "ACCOUNT_LOCKED") {
+          return { 
+            success: false, 
+            error: `Cuenta bloqueada. ${data.minutosRestantes ? `Espere ${data.minutosRestantes} minutos.` : "Contacte al administrador."}` 
+          };
+        }
+        if (data.code === "ACCOUNT_NOT_ACTIVE") {
+          return { 
+            success: false, 
+            error: "Cuenta no activa. Contacte al administrador del sistema." 
+          };
+        }
+        return { success: false, error: data.message || "Error al iniciar sesión" };
+      }
 
-    if (foundUser.estado === "suspendida") {
+      // Login exitoso - Solo guardamos el token en sessionStorage
+      const receivedToken = data.data.token;
+      
+      // Construir datos del usuario desde la respuesta (para uso inmediato)
+      const userData: User = {
+        id: data.data.user.funcionarioId,
+        nombre: data.data.user.nombresCompletos,
+        identificacion: data.data.user.identificacion,
+        cargo: roleMapping[data.data.user.rolNombre as UserRole],
+        rol: data.data.user.rolNombre,
+        unidadJudicial: data.data.user.unidadJudicial,
+        materia: data.data.user.materia,
+        email: data.data.user.correoInstitucional,
+        estado: data.data.user.estado,
+      };
+
+      setUser(userData);
+      setToken(receivedToken);
+      
+      // Solo guardar el token en sessionStorage (no datos del usuario)
+      sessionStorage.setItem(TOKEN_KEY, receivedToken);
+
+      return { success: true, user: userData };
+    } catch (error) {
+      console.error("Login error:", error);
       return { 
         success: false, 
-        error: "Cuenta bloqueada. Contacte al administrador del sistema." 
+        error: "Error de conexión. Verifique que el servidor esté activo." 
       };
     }
-
-    if (foundUser.estado === "inactiva") {
-      return { 
-        success: false, 
-        error: "Cuenta inactiva. Su cuenta ha sido desactivada." 
-      };
-    }
-
-    if (foundUser.password !== password) {
-      return { 
-        success: false, 
-        error: `Contraseña incorrecta. Intento ${foundUser.intentosFallidos + 1} de 5.` 
-      };
-    }
-
-    const { password: _, ...userWithoutPassword } = foundUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem("mockUser", JSON.stringify(userWithoutPassword));
-    
-    return { success: true };
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem("mockUser");
+    setToken(null);
+    sessionStorage.removeItem(TOKEN_KEY);
+    // Limpiar también localStorage por si quedaron datos antiguos
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout }}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        token,
+        isAuthenticated: !!user && !!token, 
+        isLoading,
+        login, 
+        logout 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -148,7 +237,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
+    // En desarrollo, esto puede ocurrir durante HMR - mostrar warning en lugar de error
+    if (import.meta.env.DEV) {
+      console.warn("useAuth called outside of AuthProvider - this may be a HMR issue. Try refreshing the page.");
+      // Retornar un objeto dummy para evitar crash durante HMR
+      return {
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: true,
+        login: async () => ({ success: false, error: "Context not ready" }),
+        logout: () => {},
+      } as AuthContextType;
+    }
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
+
+// Type for the context (needed for fallback)
+type AuthContextType = ReturnType<typeof useAuth>;

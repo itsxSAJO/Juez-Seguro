@@ -87,7 +87,8 @@ export function authorize(...allowedRoles: UserRole[]) {
           req.user.funcionarioId,
           `${req.method} ${req.path}`,
           ip,
-          userAgent
+          userAgent,
+          req.user.correo
         );
 
         res.status(403).json({

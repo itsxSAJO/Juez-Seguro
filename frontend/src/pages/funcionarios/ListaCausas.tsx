@@ -2,15 +2,14 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   Search,
-  Filter,
   Eye,
-  Calendar,
   FileText,
   Gavel,
   AlertTriangle,
   CheckCircle,
   Clock,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { FuncionariosLayout } from "@/components/funcionarios/FuncionariosLayout";
@@ -33,14 +32,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getCausas, Causa } from "@/lib/funcionarios-data";
-import { cn } from "@/lib/utils";
+import { causasService } from "@/services/causas.service";
+import type { Causa, EstadoCausa, PrioridadCausa } from "@/types";
+import { toast } from "@/hooks/use-toast";
 
 const ListaCausas = () => {
   const { user } = useAuth();
   const [causas, setCausas] = useState<Causa[]>([]);
   const [filteredCausas, setFilteredCausas] = useState<Causa[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterEstado, setFilterEstado] = useState<string>("todos");
   const [filterMateria, setFilterMateria] = useState<string>("todas");
@@ -57,8 +58,8 @@ const ListaCausas = () => {
       filtered = filtered.filter(
         (c) =>
           c.numeroExpediente.toLowerCase().includes(query) ||
-          c.actor.toLowerCase().includes(query) ||
-          c.demandado.toLowerCase().includes(query)
+          c.actorNombre.toLowerCase().includes(query) ||
+          c.demandadoNombre.toLowerCase().includes(query)
       );
     }
 
@@ -75,17 +76,24 @@ const ListaCausas = () => {
 
   const loadCausas = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const data = await getCausas(user?.cargo === "juez" ? user.id : undefined);
-      setCausas(data);
-    } catch (error) {
-      console.error("Error loading causas:", error);
+      const response = await causasService.getCausas();
+      setCausas(response.data);
+    } catch (err: any) {
+      console.error("Error loading causas:", err);
+      setError(err.message || "Error al cargar las causas");
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las causas. Verifique que el servidor esté activo.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getEstadoBadge = (estado: Causa["estado"]) => {
+  const getEstadoBadge = (estado: EstadoCausa) => {
     switch (estado) {
       case "en_tramite":
         return <Badge className="bg-success/10 text-success border-success/20">En Trámite</Badge>;
@@ -98,7 +106,7 @@ const ListaCausas = () => {
     }
   };
 
-  const getPrioridadIcon = (prioridad: Causa["prioridad"]) => {
+  const getPrioridadIcon = (prioridad: PrioridadCausa) => {
     switch (prioridad) {
       case "urgente":
         return <AlertTriangle className="w-4 h-4 text-destructive" />;
@@ -125,15 +133,33 @@ const ListaCausas = () => {
               : "Administre las causas judiciales"}
           </p>
         </div>
-        {user?.cargo === "secretario" && (
-          <Button asChild>
-            <Link to="/funcionarios/causas/nueva">
-              <FileText className="w-4 h-4 mr-2" />
-              Nueva Causa
-            </Link>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadCausas} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Actualizar
           </Button>
-        )}
+          {user?.cargo === "secretario" && (
+            <Button asChild>
+              <Link to="/funcionarios/causas/nueva">
+                <FileText className="w-4 h-4 mr-2" />
+                Nueva Causa
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Error State */}
+      {error && (
+        <Card className="mb-6 border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              <p>{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards for Juez */}
       {user?.cargo === "juez" && (

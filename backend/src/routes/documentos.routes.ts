@@ -40,7 +40,7 @@ router.get(
       await auditService.logCRUD("documento", "consultar", req.user!.funcionarioId, null, {
         causaId: req.params.causaId,
         totalDocumentos: documentos.length,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,
@@ -75,7 +75,7 @@ router.get(
       await auditService.logCRUD("documento", "leer", req.user!.funcionarioId, req.params.id, {
         nombre: documento.nombre,
         tipo: documento.tipo,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,
@@ -119,7 +119,7 @@ router.post(
         tipo: documento.tipo,
         causaId: documento.causaId,
         tamanio: documento.tamanioBytes,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.status(201).json({
         success: true,
@@ -173,7 +173,7 @@ router.delete(
       await auditService.logCRUD("documento", "eliminar", req.user!.funcionarioId, req.params.id, {
         nombre: documento.nombre,
         tipo: documento.tipo,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,
@@ -201,7 +201,7 @@ router.post(
 
       await auditService.logCRUD("documento", "verificar_integridad", req.user!.funcionarioId, req.params.id, {
         resultado: integro ? "íntegro" : "alterado",
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,

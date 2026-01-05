@@ -147,7 +147,7 @@ router.post(
         causaId: audiencia.causaId,
         tipo: audiencia.tipo,
         fechaHora: audiencia.fechaHora,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.status(201).json({
         success: true,
@@ -194,7 +194,7 @@ router.patch(
 
       await auditService.logCRUD("audiencia", "cambiar_estado", req.user!.funcionarioId, req.params.id, {
         estadoNuevo: estado,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,
@@ -236,7 +236,7 @@ router.patch(
       await auditService.logCRUD("audiencia", "reprogramar", req.user!.funcionarioId, req.params.id, {
         nuevaFecha: datos.nuevaFecha,
         motivo: datos.motivo,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,

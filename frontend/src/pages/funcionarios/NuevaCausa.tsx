@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, FileText, Users, Check, ChevronRight } from "lucide-react";
+import { ArrowLeft, FileText, Users, Check, ChevronRight, AlertTriangle, Shield } from "lucide-react";
 import { FuncionariosLayout } from "@/components/funcionarios/FuncionariosLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Form,
   FormControl,
@@ -35,6 +36,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { causasService } from "@/services/causas.service";
 
 const causaSchema = z.object({
   materia: z.string().min(1, "Seleccione una materia"),
@@ -50,17 +53,8 @@ const causaSchema = z.object({
 
 type CausaFormData = z.infer<typeof causaSchema>;
 
-const materias = [
-  "Civil",
-  "Penal",
-  "Laboral",
-  "Familia",
-  "Niñez y Adolescencia",
-  "Tránsito",
-  "Contencioso Administrativo",
-];
-
-const tiposAccion: Record<string, string[]> = {
+// Catálogo de materias y sus tipos de acción
+const tiposAccionPorMateria: Record<string, string[]> = {
   Civil: ["Ordinario", "Sumario", "Ejecutivo", "Verbal Sumario", "Monitorio"],
   Penal: ["Procedimiento Directo", "Procedimiento Abreviado", "Procedimiento Ordinario"],
   Laboral: ["Procedimiento Sumario", "Procedimiento Oral"],
@@ -70,7 +64,8 @@ const tiposAccion: Record<string, string[]> = {
   "Contencioso Administrativo": ["Subjetivo", "Objetivo", "Lesividad"],
 };
 
-const unidadesJudiciales = [
+// Catálogo de unidades judiciales
+const todasUnidadesJudiciales = [
   "Unidad Judicial Civil de Quito",
   "Unidad Judicial Penal de Guayaquil",
   "Unidad Judicial de Familia de Cuenca",
@@ -81,11 +76,31 @@ const unidadesJudiciales = [
 
 const NuevaCausa = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState("");
+  const [juezAsignado, setJuezAsignado] = useState("");
+  const [scopeError, setScopeError] = useState<string | null>(null);
+
+  // HU-SJ-001: Filtrar materias y unidades según el scope del secretario
+  const materiasDisponibles = useMemo(() => {
+    if (!user?.materia) return Object.keys(tiposAccionPorMateria);
+    // Solo mostrar la materia del secretario
+    return Object.keys(tiposAccionPorMateria).filter(
+      m => m.toLowerCase().trim() === user.materia.toLowerCase().trim()
+    );
+  }, [user?.materia]);
+
+  const unidadesDisponibles = useMemo(() => {
+    if (!user?.unidadJudicial) return todasUnidadesJudiciales;
+    // Solo mostrar la unidad del secretario
+    return todasUnidadesJudiciales.filter(
+      u => u.toLowerCase().trim() === user.unidadJudicial.toLowerCase().trim()
+    );
+  }, [user?.unidadJudicial]);
 
   const form = useForm<CausaFormData>({
     resolver: zodResolver(causaSchema),
@@ -102,10 +117,21 @@ const NuevaCausa = () => {
     },
   });
 
+  // Pre-fill materia and unidadJudicial when user data is available
+  useEffect(() => {
+    if (user?.materia) {
+      form.setValue("materia", user.materia);
+    }
+    if (user?.unidadJudicial) {
+      form.setValue("unidadJudicial", user.unidadJudicial);
+    }
+  }, [user?.materia, user?.unidadJudicial, form]);
+
   const selectedMateria = form.watch("materia");
-  const availableTipos = selectedMateria ? tiposAccion[selectedMateria] || [] : [];
+  const availableTipos = selectedMateria ? tiposAccionPorMateria[selectedMateria] || [] : [];
 
   const handleNext = async () => {
+    setScopeError(null); // Limpiar errores previos
     if (step === 1) {
       const isValid = await form.trigger(["materia", "tipoAccion", "unidadJudicial"]);
       if (isValid) setStep(2);
@@ -128,24 +154,69 @@ const NuevaCausa = () => {
     setShowConfirmation(true);
   };
 
+  /**
+   * HU-SJ-001: Envía la causa a la API con validación de scope
+   * La API valida que materia y unidad coincidan con los atributos del secretario
+   * y asigna automáticamente un juez por sorteo
+   */
   const confirmSubmit = async () => {
     setIsSubmitting(true);
     setShowConfirmation(false);
+    setScopeError(null);
 
-    // Simulate API call
-    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const formData = form.getValues();
+      
+      // Llamar a la API real - HU-SJ-001
+      const resultado = await causasService.crearCausa({
+        materia: formData.materia,
+        tipoProceso: formData.tipoAccion,
+        unidadJudicial: formData.unidadJudicial,
+        descripcion: formData.descripcion,
+        // Partes procesales (información pública)
+        actorNombre: formData.actorNombre,
+        actorIdentificacion: formData.actorIdentificacion,
+        demandadoNombre: formData.demandadoNombre,
+        demandadoIdentificacion: formData.demandadoIdentificacion,
+      });
 
-    // Generate case number
-    const provincia = "17";
-    const juzgado = Math.floor(Math.random() * 900) + 100;
-    const year = new Date().getFullYear();
-    const seq = String(Math.floor(Math.random() * 99999)).padStart(5, "0");
-    const letter = "ABCDEFGHJK"[Math.floor(Math.random() * 10)];
-    const number = `${provincia}${juzgado}-${year}-${seq}${letter}`;
-
-    setGeneratedNumber(number);
-    setIsSubmitting(false);
-    setShowSuccess(true);
+      // Éxito - mostrar número de proceso generado
+      setGeneratedNumber(resultado.numero_proceso);
+      setJuezAsignado(resultado.juezPseudonimo || resultado.juez_pseudonimo);
+      setShowSuccess(true);
+      
+      toast({
+        title: "Causa registrada exitosamente",
+        description: `Número de proceso: ${resultado.numero_proceso}`,
+      });
+    } catch (error: any) {
+      console.error("Error al crear causa:", error);
+      
+      // Manejar error de scope (403 Forbidden)
+      if (error.message?.includes("Acceso denegado") || error.message?.includes("No tiene permisos")) {
+        setScopeError(error.message);
+        toast({
+          title: "Acceso Denegado",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else if (error.message?.includes("Sin jueces disponibles") || error.message?.includes("No hay jueces")) {
+        setScopeError(error.message);
+        toast({
+          title: "Sin Jueces Disponibles",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error al crear la causa",
+          description: error.message || "Ocurrió un error inesperado",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const formData = form.getValues();
@@ -200,6 +271,27 @@ const NuevaCausa = () => {
         ))}
       </div>
 
+      {/* Alerta de información de scope del secretario - HU-SJ-001 */}
+      {user && (
+        <Alert className="max-w-3xl mx-auto mb-4">
+          <Shield className="h-4 w-4" />
+          <AlertTitle>Validación de Scope (FIA_ATD)</AlertTitle>
+          <AlertDescription>
+            Solo puede registrar causas de <strong>{user.materia}</strong> en <strong>{user.unidadJudicial}</strong>. 
+            El juez será asignado automáticamente por sorteo equitativo.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error de scope si existe */}
+      {scopeError && (
+        <Alert variant="destructive" className="max-w-3xl mx-auto mb-4">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error de Validación</AlertTitle>
+          <AlertDescription>{scopeError}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Form */}
       <Card className="max-w-3xl mx-auto">
         <CardHeader>
@@ -228,6 +320,7 @@ const NuevaCausa = () => {
                             form.setValue("tipoAccion", "");
                           }}
                           value={field.value}
+                          disabled={materiasDisponibles.length === 1} // Deshabilitar si solo hay una opción
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -235,13 +328,19 @@ const NuevaCausa = () => {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {materias.map((m) => (
+                            {materiasDisponibles.map((m) => (
                               <SelectItem key={m} value={m}>
                                 {m}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormDescription>
+                          {materiasDisponibles.length === 1 
+                            ? "Materia asignada según su perfil"
+                            : "Seleccione la materia del proceso"
+                          }
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -285,20 +384,30 @@ const NuevaCausa = () => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Unidad Judicial</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select 
+                          onValueChange={field.onChange} 
+                          value={field.value}
+                          disabled={unidadesDisponibles.length === 1} // Deshabilitar si solo hay una opción
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccione la unidad judicial" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {unidadesJudiciales.map((u) => (
+                            {unidadesDisponibles.map((u) => (
                               <SelectItem key={u} value={u}>
                                 {u}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormDescription>
+                          {unidadesDisponibles.length === 1 
+                            ? "Unidad asignada según su perfil"
+                            : "Seleccione la unidad judicial"
+                          }
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -491,7 +600,7 @@ const NuevaCausa = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Success Dialog */}
+      {/* Success Dialog - HU-SJ-001 */}
       <Dialog open={showSuccess} onOpenChange={setShowSuccess}>
         <DialogContent className="sm:max-w-md text-center">
           <DialogHeader>
@@ -500,14 +609,27 @@ const NuevaCausa = () => {
             </div>
             <DialogTitle className="text-xl">Causa Registrada Exitosamente</DialogTitle>
             <DialogDescription>
-              Se ha generado el expediente electrónico
+              Se ha generado el expediente electrónico con asignación automática de juez
             </DialogDescription>
           </DialogHeader>
-          <div className="py-6">
-            <p className="text-sm text-muted-foreground mb-2">Número de Proceso:</p>
-            <code className="text-2xl font-mono font-bold text-primary bg-primary/10 px-4 py-2 rounded-lg">
-              {generatedNumber}
-            </code>
+          <div className="py-6 space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">Número de Proceso:</p>
+              <code className="text-2xl font-mono font-bold text-primary bg-primary/10 px-4 py-2 rounded-lg">
+                {generatedNumber}
+              </code>
+            </div>
+            {juezAsignado && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Juez Asignado (Pseudónimo):</p>
+                <code className="text-lg font-mono font-semibold text-secondary-foreground bg-secondary px-3 py-1 rounded-lg">
+                  {juezAsignado}
+                </code>
+                <p className="text-xs text-muted-foreground mt-1">
+                  El pseudónimo protege la identidad del juez (FDP_IFF)
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter className="sm:justify-center">
             <Button onClick={() => navigate("/funcionarios/causas")}>
@@ -517,8 +639,20 @@ const NuevaCausa = () => {
               variant="outline"
               onClick={() => {
                 setShowSuccess(false);
-                form.reset();
+                form.reset({
+                  materia: user?.materia || "",
+                  tipoAccion: "",
+                  unidadJudicial: user?.unidadJudicial || "",
+                  actorNombre: "",
+                  actorIdentificacion: "",
+                  demandadoNombre: "",
+                  demandadoIdentificacion: "",
+                  descripcion: "",
+                  cuantia: "",
+                });
                 setStep(1);
+                setJuezAsignado("");
+                setScopeError(null);
               }}
             >
               Registrar Otra

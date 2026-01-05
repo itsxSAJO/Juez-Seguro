@@ -53,17 +53,49 @@ const ExpedienteCausa = () => {
 
   useEffect(() => {
     const loadData = async () => {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+      
       setLoading(true);
-      const [causaData, docsData, audData] = await Promise.all([
-        getCausaById(id || ""),
-        getDocumentos(id),
-        getAudiencias(),
-      ]);
-      setCausa(causaData);
-      setDocumentos(docsData);
-      setAudiencias(audData.filter((a) => a.causaId === id).slice(0, 5));
-      setLoading(false);
+      try {
+        // Cargar datos en paralelo con manejo de errores individual
+        const [causaResult, docsResult, audResult] = await Promise.allSettled([
+          getCausaById(id),
+          getDocumentos(id),
+          getAudiencias(),
+        ]);
+        
+        // Procesar resultado de causa
+        if (causaResult.status === 'fulfilled' && causaResult.value) {
+          setCausa(causaResult.value);
+        } else {
+          console.error("Error cargando causa:", causaResult.status === 'rejected' ? causaResult.reason : 'No data');
+        }
+        
+        // Procesar resultado de documentos (puede estar vacío)
+        if (docsResult.status === 'fulfilled' && docsResult.value) {
+          setDocumentos(docsResult.value);
+        } else {
+          console.warn("No se pudieron cargar documentos:", docsResult.status === 'rejected' ? docsResult.reason : 'No data');
+          setDocumentos([]); // Establecer array vacío en lugar de fallar
+        }
+        
+        // Procesar resultado de audiencias
+        if (audResult.status === 'fulfilled' && audResult.value) {
+          setAudiencias(audResult.value.filter((a) => a.causaId === id).slice(0, 5));
+        } else {
+          console.warn("No se pudieron cargar audiencias:", audResult.status === 'rejected' ? audResult.reason : 'No data');
+          setAudiencias([]);
+        }
+      } catch (error) {
+        console.error("Error general cargando datos:", error);
+      } finally {
+        setLoading(false);
+      }
     };
+    
     loadData();
   }, [id]);
 
@@ -246,25 +278,58 @@ const ExpedienteCausa = () => {
           </Card>
         </div>
 
-        {/* Partes */}
+        {/* Partes Procesales y Funcionarios */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <User className="w-5 h-5" />
-              Partes Procesales
+              Partes Procesales y Funcionarios
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-4 rounded-lg bg-muted/50 border">
-                <p className="text-sm text-muted-foreground mb-1">Actor / Ofendido</p>
-                <p className="font-medium">{causa.actorPseudonimo}</p>
-              </div>
-              <div className="p-4 rounded-lg bg-muted/50 border">
-                <p className="text-sm text-muted-foreground mb-1">Demandado / Procesado</p>
-                <p className="font-medium">{causa.demandadoPseudonimo}</p>
+          <CardContent className="space-y-4">
+            {/* Partes procesales - Información pública (nombres reales) */}
+            <div>
+              <p className="text-xs uppercase text-muted-foreground mb-3 font-semibold tracking-wider">
+                Partes del Proceso (Información Pública)
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-4 rounded-lg bg-muted/50 border">
+                  <p className="text-sm text-muted-foreground mb-1">Actor / Demandante</p>
+                  <p className="font-medium">{causa.actorNombre}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/50 border">
+                  <p className="text-sm text-muted-foreground mb-1">Demandado / Procesado</p>
+                  <p className="font-medium">{causa.demandadoNombre}</p>
+                </div>
               </div>
             </div>
+            
+            {/* Funcionarios judiciales - Pseudonimizados */}
+            <div className="pt-4 border-t">
+              <p className="text-xs uppercase text-muted-foreground mb-3 font-semibold tracking-wider">
+                Funcionarios Judiciales (Identidad Protegida)
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                  <p className="text-sm text-muted-foreground mb-1">Juez Asignado (Pseudónimo)</p>
+                  <p className="font-medium">{causa.juezAsignadoNombre}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-info/5 border border-info/20">
+                  <p className="text-sm text-muted-foreground mb-1">Registrado por (Pseudónimo)</p>
+                  <p className="font-medium">{causa.secretarioPseudonimo || "Secretario Judicial"}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Descripción del caso */}
+            {causa.descripcion && (
+              <div className="pt-4 border-t">
+                <p className="text-sm text-muted-foreground mb-2">Descripción del Caso</p>
+                <div className="p-4 rounded-lg bg-muted/30 border">
+                  <p className="text-sm">{causa.descripcion}</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -358,61 +423,84 @@ const ExpedienteCausa = () => {
           <TabsContent value="documentos" className="mt-4">
             <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="text-left p-4 font-medium">Documento</th>
-                        <th className="text-left p-4 font-medium">Tipo</th>
-                        <th className="text-left p-4 font-medium">Fecha</th>
-                        <th className="text-left p-4 font-medium">Estado</th>
-                        <th className="text-left p-4 font-medium">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {documentos.map((doc) => (
-                        <tr key={doc.id} className="border-b hover:bg-muted/30">
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-muted-foreground" />
-                              <span className="font-medium">{doc.nombre}</span>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <Badge variant="outline">{doc.tipo}</Badge>
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {format(new Date(doc.fechaSubida), "dd/MM/yyyy")}
-                          </td>
-                          <td className="p-4">
-                            {doc.estado === "firmado" ? (
-                              <Badge className="bg-success text-success-foreground">
-                                <CheckCircle2 className="w-3 h-3 mr-1" />
-                                Firmado
-                              </Badge>
-                            ) : doc.estado === "pendiente" ? (
-                              <Badge className="bg-warning text-warning-foreground">Pendiente</Badge>
-                            ) : doc.estado === "borrador" ? (
-                              <Badge variant="secondary">Borrador</Badge>
-                            ) : (
-                              <Badge className="bg-info text-info-foreground">Notificado</Badge>
-                            )}
-                          </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <Button variant="ghost" size="icon">
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon">
-                                <Download className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
+                {documentos.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">No hay documentos en este expediente</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="text-left p-4 font-medium">Documento</th>
+                          <th className="text-left p-4 font-medium">Tipo</th>
+                          <th className="text-left p-4 font-medium">Subido por</th>
+                          <th className="text-left p-4 font-medium">Fecha</th>
+                          <th className="text-left p-4 font-medium">Estado</th>
+                          <th className="text-left p-4 font-medium">Acciones</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {documentos.map((doc) => (
+                          <tr key={doc.id} className="border-b hover:bg-muted/30">
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-destructive" />
+                                <div>
+                                  <span className="font-medium block">{doc.nombre}</span>
+                                  {doc.tamano && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {typeof doc.tamano === 'number' 
+                                        ? `${Math.round(doc.tamano / 1024)} KB`
+                                        : doc.tamano}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <Badge variant="outline" className="capitalize">{doc.tipo}</Badge>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                <User className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-sm">{doc.subidoPor || "Secretario"}</span>
+                              </div>
+                            </td>
+                            <td className="p-4 text-sm text-muted-foreground">
+                              {doc.fechaSubida ? format(new Date(doc.fechaSubida), "dd/MM/yyyy HH:mm", { locale: es }) : "-"}
+                            </td>
+                            <td className="p-4">
+                              {doc.estado === "firmado" ? (
+                                <Badge className="bg-success text-success-foreground">
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  Firmado
+                                </Badge>
+                              ) : doc.estado === "pendiente" ? (
+                                <Badge className="bg-warning text-warning-foreground">Pendiente</Badge>
+                              ) : doc.estado === "borrador" ? (
+                                <Badge variant="secondary">Borrador</Badge>
+                              ) : (
+                                <Badge className="bg-info text-info-foreground">Notificado</Badge>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                <Button variant="ghost" size="icon" title="Ver documento">
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" title="Descargar">
+                                  <Download className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

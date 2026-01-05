@@ -34,6 +34,7 @@ router.get(
       await auditService.log({
         tipoEvento: "CONSULTA_AUDITORIA",
         usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
         moduloAfectado: "AUTH",
         descripcion: "Consulta de logs de auditoría",
         datosAfectados: { filtros, totalResultados: resultado.total },

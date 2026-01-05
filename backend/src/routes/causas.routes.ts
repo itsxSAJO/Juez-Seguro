@@ -1,6 +1,7 @@
 // ============================================================================
 // JUEZ SEGURO BACKEND - Rutas de Causas
 // Gestión de causas judiciales con pseudonimización (FDP)
+// HU-SJ-001: Registro de nuevas causas con validación de scope
 // ============================================================================
 
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -15,6 +16,20 @@ const router = Router();
 // Esquemas de validación
 // ============================================================================
 
+// Esquema para crear causa con asignación automática (HU-SJ-001)
+const crearCausaAutoSchema = z.object({
+  materia: z.string().min(1, "Materia es requerida"),
+  tipoProceso: z.string().min(1, "Tipo de proceso es requerido"),
+  unidadJudicial: z.string().min(1, "Unidad judicial es requerida"),
+  descripcion: z.string().optional(),
+  // Partes procesales (información pública)
+  actorNombre: z.string().optional(),
+  actorIdentificacion: z.string().optional(),
+  demandadoNombre: z.string().optional(),
+  demandadoIdentificacion: z.string().optional(),
+});
+
+// Esquema legacy (mantener compatibilidad)
 const crearCausaSchema = z.object({
   numeroProceso: z.string().min(1, "Número de proceso requerido"),
   materia: z.string().min(1, "Materia es requerida"),
@@ -58,6 +73,7 @@ router.get(
       await auditService.log({
         tipoEvento: "CONSULTA_CAUSAS",
         usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
         moduloAfectado: "CASOS",
         descripcion: `Consulta de causas`,
         datosAfectados: { filtros, totalResultados: resultado.total },
@@ -167,7 +183,8 @@ router.get(
 
 // ============================================================================
 // POST /api/causas
-// Crea una nueva causa (Solo SECRETARIO)
+// Crea una nueva causa (Solo SECRETARIO) - HU-SJ-001
+// Incluye: Validación de scope (FIA_ATD), Asignación automática de juez (sorteo)
 // ============================================================================
 router.post(
   "/",
@@ -175,11 +192,13 @@ router.post(
   authorize("SECRETARIO"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const validation = crearCausaSchema.safeParse(req.body);
+      // Validar datos de entrada
+      const validation = crearCausaAutoSchema.safeParse(req.body);
       if (!validation.success) {
         res.status(400).json({
           success: false,
           error: validation.error.errors[0].message,
+          code: "VALIDATION_ERROR",
         });
         return;
       }
@@ -187,32 +206,60 @@ router.post(
       const ip = getClientIp(req);
       const userAgent = getUserAgent(req);
 
-      const causa = await causasService.crearCausa(
+      // Crear causa con validación de scope y asignación automática de juez
+      const resultado = await causasService.crearCausaConValidacion(
         {
-          numeroProceso: validation.data.numeroProceso,
           materia: validation.data.materia,
           tipoProceso: validation.data.tipoProceso,
           unidadJudicial: validation.data.unidadJudicial,
+          descripcion: validation.data.descripcion,
+          actorNombre: validation.data.actorNombre,
+          actorIdentificacion: validation.data.actorIdentificacion,
+          demandadoNombre: validation.data.demandadoNombre,
+          demandadoIdentificacion: validation.data.demandadoIdentificacion,
         },
-        validation.data.juezAsignadoId,
-        req.user!.funcionarioId,
+        req.user!, // Token del secretario para validación de scope
         ip,
         userAgent
       );
 
       res.status(201).json({
         success: true,
-        data: causa,
-        message: "Causa creada correctamente",
+        data: {
+          ...resultado.causa,
+          juezPseudonimo: resultado.juezAsignado, // Solo pseudónimo, nunca ID real
+        },
+        message: `Causa ${resultado.causa.numero_proceso} creada correctamente. Juez asignado: ${resultado.juezAsignado}`,
       });
-    } catch (error) {
+    } catch (error: any) {
+      // Manejar errores específicos de validación de scope
+      if (error.code === "MATERIA_NO_COINCIDE" || error.code === "UNIDAD_NO_COINCIDE") {
+        res.status(403).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+        return;
+      }
+      
+      if (error.code === "NO_JUECES_DISPONIBLES") {
+        res.status(400).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+        return;
+      }
+
       if (error instanceof Error && error.message.includes("Ya existe")) {
         res.status(409).json({
           success: false,
           error: error.message,
+          code: "DUPLICATE_PROCESO",
         });
         return;
       }
+      
       next(error);
     }
   }

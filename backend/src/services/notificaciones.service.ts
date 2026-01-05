@@ -116,9 +116,9 @@ class NotificacionesService {
       params.push(pageSize, offset);
 
       const result = await client.query(
-        `SELECT n.*, c.numero_expediente
+        `SELECT n.*, c.numero_proceso
          FROM notificaciones n
-         LEFT JOIN causas c ON n.causa_id = c.id
+         LEFT JOIN causas c ON n.causa_id = c.causa_id
          ${whereClause}
          ORDER BY n.fecha_creacion DESC
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
@@ -142,9 +142,9 @@ class NotificacionesService {
 
     try {
       const result = await client.query(
-        `SELECT n.*, c.numero_expediente
+        `SELECT n.*, c.numero_proceso
          FROM notificaciones n
-         LEFT JOIN causas c ON n.causa_id = c.id
+         LEFT JOIN causas c ON n.causa_id = c.causa_id
          WHERE n.estado = 'pendiente'
          ORDER BY 
            CASE n.prioridad 
@@ -287,7 +287,7 @@ class NotificacionesService {
       id: row.id,
       causa_id: row.causa_id,
       causaId: row.causa_id,
-      numeroExpediente: row.numero_expediente,
+      numeroExpediente: row.numero_proceso,
       tipo: row.tipo,
       destinatario: row.destinatario,
       asunto: row.asunto,

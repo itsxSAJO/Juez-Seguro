@@ -36,14 +36,14 @@ export const auditoriaService = {
       if (filtros.pageSize) params.pageSize = filtros.pageSize.toString();
     }
     
-    return api.get<PaginatedResponse<LogAuditoria>>("/auditoria/logs", params);
+    return api.get<PaginatedResponse<LogAuditoria>>("/auditoria", params);
   },
 
   /**
    * Obtiene un log por ID
    */
   async getLogById(id: string): Promise<LogAuditoria> {
-    const response = await api.get<ApiResponse<LogAuditoria>>(`/auditoria/logs/${id}`);
+    const response = await api.get<ApiResponse<LogAuditoria>>(`/auditoria/${id}`);
     
     if (response.success && response.data) {
       return response.data;

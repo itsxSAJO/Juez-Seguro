@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { getAudiencias, getCausas, Audiencia } from "@/lib/funcionarios-data";
+import { getAudiencias, getCausas, Audiencia, generateMockAudiencias_compat as generateMockAudiencias, generateMockCausas_compat as generateMockCausas } from "@/lib/funcionarios-data";
 
 const AgendaAudiencias = () => {
   const { toast } = useToast();

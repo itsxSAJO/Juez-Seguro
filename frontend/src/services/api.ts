@@ -6,6 +6,9 @@
 // URL base del backend - configurable por entorno
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
+// Clave para sessionStorage (debe coincidir con AuthContext)
+const TOKEN_KEY = "auth_token";
+
 // Tipos de respuesta estándar
 export interface ApiResponse<T> {
   success: boolean;
@@ -46,7 +49,8 @@ class ApiClient {
   }
 
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem("authToken");
+    // Usar sessionStorage en lugar de localStorage para mayor seguridad
+    const token = sessionStorage.getItem(TOKEN_KEY);
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };

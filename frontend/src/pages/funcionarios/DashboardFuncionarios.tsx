@@ -308,10 +308,11 @@ const DashboardFuncionarios = () => {
         </Card>
       )}
 
-      {user?.cargo === "admin" && (
+      {user?.cargo === "cj" && (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle className="text-lg">Administración</CardTitle>
+            <CardTitle className="text-lg">Administración del Sistema</CardTitle>
+            <CardDescription>Panel de control del Consejo de la Judicatura</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild>

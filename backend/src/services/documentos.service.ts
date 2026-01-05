@@ -79,11 +79,10 @@ class DocumentosService {
 
     try {
       const result = await client.query(
-        `SELECT d.*, u.nombre as subido_por_nombre
-         FROM documentos d
-         LEFT JOIN usuarios u ON d.subido_por_id = u.id
-         WHERE d.causa_id = $1 AND d.estado = 'activo'
-         ORDER BY d.fecha_subida DESC`,
+        `SELECT *
+         FROM documentos
+         WHERE causa_id = $1 AND estado = 'activo'
+         ORDER BY fecha_subida DESC`,
         [causaId]
       );
 
@@ -101,10 +100,9 @@ class DocumentosService {
 
     try {
       const result = await client.query(
-        `SELECT d.*, u.nombre as subido_por_nombre
-         FROM documentos d
-         LEFT JOIN usuarios u ON d.subido_por_id = u.id
-         WHERE d.id = $1`,
+        `SELECT *
+         FROM documentos
+         WHERE id = $1`,
         [id]
       );
 
@@ -162,8 +160,9 @@ class DocumentosService {
       mimeType: row.mime_type,
       subido_por_id: row.subido_por_id,
       subidoPorId: row.subido_por_id,
-      subidoPorNombre: row.subido_por_nombre,
+      subidoPorNombre: row.subido_por_nombre || `Usuario ${row.subido_por_id}`,
       fecha_subida: row.fecha_subida,
+      fechaSubida: row.fecha_subida,
       estado: row.estado,
     };
   }

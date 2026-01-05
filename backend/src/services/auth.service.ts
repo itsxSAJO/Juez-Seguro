@@ -47,8 +47,41 @@ class AuthService {
 
       // Verificar si la cuenta está bloqueada (FIA_AFL)
       if (funcionario.estado === "BLOQUEADA") {
-        await auditService.logLogin(correo, ip, userAgent, false, funcionario.funcionario_id);
-        throw new Error("CUENTA_BLOQUEADA");
+        // Verificar si el tiempo de bloqueo ha expirado
+        if (funcionario.fecha_bloqueo) {
+          const tiempoBloqueoMs = config.security.lockoutDurationMinutes * 60 * 1000;
+          const fechaDesbloqueo = new Date(funcionario.fecha_bloqueo.getTime() + tiempoBloqueoMs);
+          
+          if (new Date() >= fechaDesbloqueo) {
+            // Desbloquear automáticamente
+            await client.query(
+              `UPDATE funcionarios 
+               SET estado = 'ACTIVA', intentos_fallidos = 0, fecha_bloqueo = NULL, fecha_actualizacion = NOW()
+               WHERE funcionario_id = $1`,
+              [funcionario.funcionario_id]
+            );
+            funcionario.estado = "ACTIVA" as EstadoCuenta;
+            funcionario.intentos_fallidos = 0;
+            funcionario.fecha_bloqueo = null;
+            
+            // Registrar desbloqueo automático
+            await this.registrarCambioEstado(
+              client,
+              funcionario.funcionario_id,
+              "BLOQUEADA",
+              "ACTIVA",
+              null // Sistema automático
+            );
+          } else {
+            // Aún bloqueado
+            const minutosRestantes = Math.ceil((fechaDesbloqueo.getTime() - Date.now()) / 60000);
+            await auditService.logLogin(correo, ip, userAgent, false, funcionario.funcionario_id);
+            throw new Error(`CUENTA_BLOQUEADA:${minutosRestantes}`);
+          }
+        } else {
+          await auditService.logLogin(correo, ip, userAgent, false, funcionario.funcionario_id);
+          throw new Error("CUENTA_BLOQUEADA");
+        }
       }
 
       // Verificar si la cuenta está activa
@@ -100,13 +133,15 @@ class AuthService {
         [funcionario.funcionario_id]
       );
 
-      // Generar token JWT
+      // Generar token JWT (FIA_USB - Atributos de sesión)
       const payload: TokenPayload = {
         funcionarioId: funcionario.funcionario_id,
         identificacion: funcionario.identificacion,
         correo: funcionario.correo_institucional,
         rol: funcionario.rol_nombre,
         rolId: funcionario.rol_id,
+        unidadJudicial: funcionario.unidad_judicial,
+        materia: funcionario.materia,
       };
 
       const signOptions: SignOptions = {

@@ -100,13 +100,13 @@ class AudienciasService {
       }
 
       if (filtros.fechaDesde) {
-        conditions.push(`a.fecha_hora >= $${paramIndex}`);
+        conditions.push(`a.fecha_programada >= $${paramIndex}`);
         params.push(filtros.fechaDesde);
         paramIndex++;
       }
 
       if (filtros.fechaHasta) {
-        conditions.push(`a.fecha_hora <= $${paramIndex}`);
+        conditions.push(`a.fecha_programada <= $${paramIndex}`);
         params.push(filtros.fechaHasta);
         paramIndex++;
       }
@@ -116,7 +116,7 @@ class AudienciasService {
       // Contar total
       const countResult = await client.query(
         `SELECT COUNT(*) FROM audiencias a
-         LEFT JOIN causas c ON a.causa_id = c.id
+         LEFT JOIN causas c ON a.causa_id = c.causa_id
          ${whereClause}`,
         params
       );
@@ -130,11 +130,11 @@ class AudienciasService {
       params.push(pageSize, offset);
 
       const result = await client.query(
-        `SELECT a.*, c.numero_expediente, c.materia
+        `SELECT a.*, c.numero_proceso, c.materia
          FROM audiencias a
-         LEFT JOIN causas c ON a.causa_id = c.id
+         LEFT JOIN causas c ON a.causa_id = c.causa_id
          ${whereClause}
-         ORDER BY a.fecha_hora ASC
+         ORDER BY a.fecha_programada ASC
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         params
       );
@@ -156,10 +156,10 @@ class AudienciasService {
 
     try {
       let query = `
-        SELECT a.*, c.numero_expediente, c.materia
+        SELECT a.*, c.numero_proceso, c.materia
         FROM audiencias a
-        LEFT JOIN causas c ON a.causa_id = c.id
-        WHERE DATE(a.fecha_hora) = CURRENT_DATE
+        LEFT JOIN causas c ON a.causa_id = c.causa_id
+        WHERE DATE(a.fecha_programada) = CURRENT_DATE
       `;
       const params: unknown[] = [];
 
@@ -168,7 +168,7 @@ class AudienciasService {
         params.push(juezId);
       }
 
-      query += ` ORDER BY a.fecha_hora ASC`;
+      query += ` ORDER BY a.fecha_programada ASC`;
 
       const result = await client.query(query, params);
 
@@ -186,11 +186,11 @@ class AudienciasService {
 
     try {
       let query = `
-        SELECT a.*, c.numero_expediente, c.materia
+        SELECT a.*, c.numero_proceso, c.materia
         FROM audiencias a
-        LEFT JOIN causas c ON a.causa_id = c.id
-        WHERE a.fecha_hora >= DATE_TRUNC('week', CURRENT_DATE)
-          AND a.fecha_hora < DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '1 week'
+        LEFT JOIN causas c ON a.causa_id = c.causa_id
+        WHERE a.fecha_programada >= DATE_TRUNC('week', CURRENT_DATE)
+          AND a.fecha_programada < DATE_TRUNC('week', CURRENT_DATE) + INTERVAL '1 week'
       `;
       const params: unknown[] = [];
 
@@ -199,7 +199,7 @@ class AudienciasService {
         params.push(juezId);
       }
 
-      query += ` ORDER BY a.fecha_hora ASC`;
+      query += ` ORDER BY a.fecha_programada ASC`;
 
       const result = await client.query(query, params);
 
@@ -263,7 +263,7 @@ class AudienciasService {
       id: row.id,
       causa_id: row.causa_id,
       causaId: row.causa_id,
-      numeroExpediente: row.numero_expediente,
+      numeroExpediente: row.numero_proceso,
       materia: row.materia,
       tipo: row.tipo,
       fecha: row.fecha_hora,

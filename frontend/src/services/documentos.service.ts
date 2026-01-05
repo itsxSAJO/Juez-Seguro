@@ -21,10 +21,33 @@ export const documentosService = {
    * Obtiene lista de documentos con filtros
    */
   async getDocumentos(filtros?: FiltrosDocumentos): Promise<PaginatedResponse<Documento>> {
+    // Si hay causaId, usar el endpoint específico
+    if (filtros?.causaId) {
+      const response = await api.get<ApiResponse<Documento[]>>(`/documentos/causa/${filtros.causaId}`);
+      
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: response.data,
+          total: response.data.length,
+          page: 1,
+          pageSize: response.data.length,
+        };
+      }
+      
+      return {
+        success: false,
+        data: [],
+        total: 0,
+        page: 1,
+        pageSize: 10,
+      };
+    }
+    
+    // Para otros filtros, usar query params
     const params: Record<string, string> = {};
     
     if (filtros) {
-      if (filtros.causaId) params.causaId = filtros.causaId;
       if (filtros.tipo) params.tipo = filtros.tipo;
       if (filtros.estado) params.estado = filtros.estado;
       if (filtros.page) params.page = filtros.page.toString();

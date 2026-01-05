@@ -63,11 +63,25 @@ export const config = {
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100", 10),
   },
 
-  // CORS
+  // CORS - soporta múltiples orígenes separados por coma
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+    origin: (process.env.CORS_ORIGIN || "http://localhost:5173").split(",").map(o => o.trim()),
     credentials: true,
   },
+
+  // Email / SMTP
+  email: {
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port: parseInt(process.env.SMTP_PORT || "587", 10),
+    secure: process.env.SMTP_SECURE === "true",
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || "",
+    from: process.env.SMTP_FROM || "noreply@judicatura.gob.ec",
+    fromName: process.env.SMTP_FROM_NAME || "Sistema Juez Seguro",
+  },
+
+  // Frontend URL (para enlaces en correos)
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:8080",
 };
 
 // Validar configuración crítica en producción
