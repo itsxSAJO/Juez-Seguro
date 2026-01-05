@@ -258,11 +258,11 @@ const ExpedienteCausa = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="p-4 rounded-lg bg-muted/50 border">
                 <p className="text-sm text-muted-foreground mb-1">Actor / Ofendido</p>
-                <p className="font-medium">{causa.actor}</p>
+                <p className="font-medium">{causa.actorPseudonimo}</p>
               </div>
               <div className="p-4 rounded-lg bg-muted/50 border">
                 <p className="text-sm text-muted-foreground mb-1">Demandado / Procesado</p>
-                <p className="font-medium">{causa.demandado}</p>
+                <p className="font-medium">{causa.demandadoPseudonimo}</p>
               </div>
             </div>
           </CardContent>
