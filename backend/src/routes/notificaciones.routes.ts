@@ -123,7 +123,7 @@ router.post(
         causaId: notificacion.causaId,
         tipo: notificacion.tipo,
         destinatario: notificacion.destinatario,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.status(201).json({
         success: true,
@@ -166,7 +166,7 @@ router.patch(
 
       await auditService.logCRUD("notificacion", "enviar", req.user!.funcionarioId, req.params.id, {
         fechaEnvio: notificacion.fechaEnvio,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,
@@ -236,7 +236,7 @@ router.patch(
 
       await auditService.logCRUD("notificacion", "cancelar", req.user!.funcionarioId, req.params.id, {
         motivo,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,
@@ -279,7 +279,7 @@ router.patch(
 
       await auditService.logCRUD("notificacion", "reenviar", req.user!.funcionarioId, req.params.id, {
         intentos: notificacion.intentosEnvio,
-      }, getClientIp(req), getUserAgent(req));
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,

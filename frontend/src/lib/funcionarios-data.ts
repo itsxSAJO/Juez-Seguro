@@ -203,6 +203,22 @@ const generateMockLogs = (count: number = 50): LogAuditoria[] => {
 // FUNCIONES EXPORTADAS (usan mock o API según configuración)
 // ============================================================================
 
+// Mapeo de roles del backend al frontend
+const rolNombreToCargoMap: Record<string, "cj" | "juez" | "secretario"> = {
+  ADMIN_CJ: "cj",
+  JUEZ: "juez",
+  SECRETARIO: "secretario",
+};
+
+// Mapeo de estados del backend al frontend
+const estadoBackendToFrontendMap: Record<string, "activa" | "suspendida" | "inactiva" | "habilitable" | "bloqueada"> = {
+  ACTIVA: "activa",
+  HABILITABLE: "habilitable",
+  SUSPENDIDA: "suspendida",
+  INACTIVA: "inactiva",
+  BLOQUEADA: "bloqueada",
+};
+
 export const getFuncionarios = async (): Promise<Funcionario[]> => {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 500));
@@ -210,10 +226,19 @@ export const getFuncionarios = async (): Promise<Funcionario[]> => {
   }
 
   const response = await usuariosService.getUsuarios();
-  return response.data.map((u) => ({
-    ...u,
-    fechaCreacion: u.fechaCreacion,
-    ultimoAcceso: u.ultimoAcceso || "",
+  // Mapear los campos del backend al formato esperado por el frontend
+  return response.data.map((u: any) => ({
+    id: u.funcionarioId?.toString() || u.id?.toString() || "",
+    nombre: u.nombresCompletos || u.nombre || "",
+    identificacion: u.identificacion || "",
+    cargo: rolNombreToCargoMap[u.rolNombre] || u.cargo || "secretario",
+    unidadJudicial: u.unidadJudicial || "",
+    materia: u.materia || "",
+    email: u.correoInstitucional || u.email || "",
+    estado: estadoBackendToFrontendMap[u.estado] || u.estado || "activa",
+    fechaCreacion: u.fechaCreacion || "",
+    ultimoAcceso: u.ultimoAcceso || u.fechaActualizacion || "",
+    intentosFallidos: u.intentosFallidos || 0,
   }));
 };
 
@@ -279,7 +304,27 @@ export const getLogs = async (): Promise<LogAuditoria[]> => {
   }
 
   const response = await auditoriaService.getLogs();
-  return response.data;
+  
+  // Mapear los datos del backend al formato esperado por el frontend
+  return response.data.map((log: any) => ({
+    id: log.log_id?.toString() || "",
+    usuario: log.usuario_correo || log.datos_afectados?.correo || `ID: ${log.usuario_id || "Sistema"}`,
+    accion: log.tipo_evento || "",
+    modulo: log.modulo_afectado || "SISTEMA",
+    detalle: log.descripcion_evento || "",
+    ip: log.ip_origen || "desconocida",
+    fecha: log.fecha_evento || "",
+    resultado: mapearResultado(log.tipo_evento),
+  }));
+};
+
+// Función auxiliar para mapear el tipo de evento a resultado
+const mapearResultado = (tipoEvento: string): "exito" | "error" | "denegado" => {
+  if (!tipoEvento) return "exito";
+  const tipo = tipoEvento.toLowerCase();
+  if (tipo.includes("error") || tipo.includes("fallido")) return "error";
+  if (tipo.includes("denegado") || tipo.includes("rechazado") || tipo.includes("acceso_denegado")) return "denegado";
+  return "exito";
 };
 
 // Alias para compatibilidad con código existente

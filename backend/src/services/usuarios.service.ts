@@ -6,14 +6,47 @@
 
 import { usersPool } from "../db/connection.js";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { auditService } from "./audit.service.js";
+import { pseudonimosService } from "./pseudonimos.service.js";
+import { emailService } from "./email.service.js";
 import type { Funcionario, FuncionarioPublico, UserRole, EstadoCuenta, Rol } from "../types/index.js";
+
+// Constante para identificar el rol de JUEZ
+const ROL_JUEZ_ID = 2; // Según el esquema: ADMIN_CJ=1, JUEZ=2, SECRETARIO=3
+
+/**
+ * Genera una contraseña segura aleatoria
+ * Incluye mayúsculas, minúsculas, números y caracteres especiales
+ */
+function generarPasswordSeguro(longitud: number = 12): string {
+  const mayusculas = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // Sin I, O para evitar confusión
+  const minusculas = "abcdefghjkmnpqrstuvwxyz"; // Sin i, l, o
+  const numeros = "23456789"; // Sin 0, 1 para evitar confusión
+  const especiales = "!@#$%&*";
+  
+  // Garantizar al menos uno de cada tipo
+  let password = "";
+  password += mayusculas[crypto.randomInt(mayusculas.length)];
+  password += minusculas[crypto.randomInt(minusculas.length)];
+  password += numeros[crypto.randomInt(numeros.length)];
+  password += especiales[crypto.randomInt(especiales.length)];
+  
+  // Completar con caracteres aleatorios
+  const todosCaracteres = mayusculas + minusculas + numeros + especiales;
+  for (let i = password.length; i < longitud; i++) {
+    password += todosCaracteres[crypto.randomInt(todosCaracteres.length)];
+  }
+  
+  // Mezclar los caracteres
+  return password.split("").sort(() => crypto.randomInt(3) - 1).join("");
+}
 
 interface CrearFuncionarioInput {
   identificacion: string;
   nombresCompletos: string;
   correoInstitucional: string;
-  password: string;
+  password?: string; // Opcional - se genera automáticamente si no se proporciona
   rolId: number;
   unidadJudicial: string;
   materia: string;
@@ -75,7 +108,9 @@ class FuncionariosService {
         throw new Error("El rol especificado no existe");
       }
 
-      const passwordHash = await bcrypt.hash(input.password, 12);
+      // Generar contraseña automáticamente si no se proporciona
+      const passwordTemporal = input.password || generarPasswordSeguro(12);
+      const passwordHash = await bcrypt.hash(passwordTemporal, 12);
 
       const result = await client.query(
         `INSERT INTO funcionarios (
@@ -96,17 +131,63 @@ class FuncionariosService {
 
       const funcionario = result.rows[0] as Funcionario;
 
+      // Enviar correo con las credenciales al funcionario usando el servicio de email
+      const correoEnviado = await emailService.enviarCredenciales(
+        input.correoInstitucional.toLowerCase(),
+        input.nombresCompletos,
+        passwordTemporal
+      );
+
+      if (!correoEnviado) {
+        console.warn(`⚠️ No se pudo enviar el correo de credenciales a ${input.correoInstitucional}`);
+      }
+
+      // EVENTO CRÍTICO: Si el rol es JUEZ, generar pseudónimo inmediatamente
+      // Esto garantiza que el pseudónimo exista ANTES de asignar cualquier causa
+      let pseudonimoGenerado: string | null = null;
+      if (input.rolId === ROL_JUEZ_ID) {
+        pseudonimoGenerado = await pseudonimosService.crearPseudonimoJuez(
+          funcionario.funcionario_id,
+          adminId,
+          ip,
+          userAgent
+        );
+      }
+
       await auditService.log({
         tipoEvento: "CREACION_USUARIO",
         usuarioId: adminId,
         moduloAfectado: "ADMIN",
-        descripcion: `Funcionario creado: ${input.identificacion} - ${input.nombresCompletos}`,
-        datosAfectados: { funcionarioId: funcionario.funcionario_id, identificacion: input.identificacion },
+        descripcion: `Funcionario creado: ${input.identificacion} - ${input.nombresCompletos}${pseudonimoGenerado ? " (pseudónimo generado)" : ""}`,
+        datosAfectados: { 
+          funcionarioId: funcionario.funcionario_id, 
+          identificacion: input.identificacion,
+          rolId: input.rolId,
+          pseudonimoGenerado: pseudonimoGenerado !== null
+        },
         ipOrigen: ip,
         userAgent,
       });
 
       return this.toPublic(funcionario);
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Verifica si un correo electrónico está disponible
+   */
+  async verificarDisponibilidadCorreo(correo: string): Promise<boolean> {
+    const client = await usersPool.connect();
+
+    try {
+      const result = await client.query(
+        "SELECT funcionario_id FROM funcionarios WHERE correo_institucional = $1",
+        [correo.toLowerCase()]
+      );
+
+      return result.rows.length === 0;
     } finally {
       client.release();
     }
@@ -418,6 +499,7 @@ class FuncionariosService {
       fechaBloqueo: f.fecha_bloqueo,
       fechaCreacion: f.fecha_creacion,
       fechaActualizacion: f.fecha_actualizacion,
+      ultimoAcceso: f.ultimo_acceso || null,
     };
   }
 }

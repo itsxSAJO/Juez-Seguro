@@ -57,8 +57,8 @@ const ListaCausas = () => {
       filtered = filtered.filter(
         (c) =>
           c.numeroExpediente.toLowerCase().includes(query) ||
-          c.actor.toLowerCase().includes(query) ||
-          c.demandado.toLowerCase().includes(query)
+          c.actorPseudonimo.toLowerCase().includes(query) ||
+          c.demandadoPseudonimo.toLowerCase().includes(query)
       );
     }
 
@@ -76,7 +76,7 @@ const ListaCausas = () => {
   const loadCausas = async () => {
     setIsLoading(true);
     try {
-      const data = await getCausas(user?.cargo === "juez" ? user.id : undefined);
+      const data = await getCausas();
       setCausas(data);
     } catch (error) {
       console.error("Error loading causas:", error);

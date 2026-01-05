@@ -74,7 +74,7 @@ const App = () => (
             <Route
               path="/funcionarios/causas"
               element={
-                <ProtectedRoute allowedRoles={["juez", "secretario"]}>
+                <ProtectedRoute allowedRoles={["cj", "juez", "secretario"]}>
                   <ListaCausas />
                 </ProtectedRoute>
               }
@@ -90,7 +90,7 @@ const App = () => (
             <Route
               path="/funcionarios/causas/:id"
               element={
-                <ProtectedRoute allowedRoles={["juez", "secretario"]}>
+                <ProtectedRoute allowedRoles={["cj", "juez", "secretario"]}>
                   <ExpedienteCausa />
                 </ProtectedRoute>
               }
@@ -98,7 +98,7 @@ const App = () => (
             <Route
               path="/funcionarios/documentos"
               element={
-                <ProtectedRoute allowedRoles={["juez", "secretario"]}>
+                <ProtectedRoute allowedRoles={["cj", "juez", "secretario"]}>
                   <GestionDocumentos />
                 </ProtectedRoute>
               }

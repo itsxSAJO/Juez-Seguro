@@ -11,6 +11,7 @@ import type { LogAuditoria, TipoEventoAuditoria, ModuloAfectado } from "../types
 interface LogEventInput {
   tipoEvento: TipoEventoAuditoria | string;
   usuarioId: number | null;
+  usuarioCorreo?: string;
   rolUsuario?: string;
   moduloAfectado?: ModuloAfectado;
   descripcion?: string;
@@ -56,13 +57,14 @@ class AuditService {
       const datos = event.datosAfectados || event.detalles || null;
       const result = await client.query(
         `INSERT INTO logs_auditoria (
-          fecha_evento, usuario_id, rol_usuario, ip_origen,
+          fecha_evento, usuario_id, usuario_correo, rol_usuario, ip_origen,
           tipo_evento, modulo_afectado, descripcion_evento, datos_afectados, hash_evento
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING log_id`,
         [
           fechaEvento,
           event.usuarioId,
+          event.usuarioCorreo || null,
           event.rolUsuario || null,
           event.ipOrigen,
           event.tipoEvento,
@@ -123,11 +125,13 @@ class AuditService {
     usuarioId: number | null,
     recurso: string,
     ip: string,
-    userAgent: string
+    userAgent: string,
+    usuarioCorreo?: string
   ): Promise<void> {
     await this.log({
       tipoEvento: "ACCESO_DENEGADO",
       usuarioId,
+      usuarioCorreo,
       moduloAfectado: "AUTH",
       descripcion: `Acceso denegado a recurso: ${recurso}`,
       datosAfectados: { recurso },
@@ -289,11 +293,13 @@ class AuditService {
     recursoId: string | number | null,
     detalles: Record<string, unknown>,
     ip: string,
-    userAgent: string
+    userAgent: string,
+    usuarioCorreo?: string
   ): Promise<void> {
     await this.log({
       tipoEvento: `${recurso.toUpperCase()}_${accion.toUpperCase()}`,
       usuarioId: typeof usuarioId === "string" ? parseInt(usuarioId) || null : usuarioId,
+      usuarioCorreo,
       moduloAfectado: recurso.toUpperCase() as any,
       descripcion: `${accion} en ${recurso}${recursoId ? ` ID: ${recursoId}` : ""}`,
       datosAfectados: { ...detalles, recursoId },

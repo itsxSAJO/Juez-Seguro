@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
@@ -69,8 +69,15 @@ const navItems: NavItem[] = [
     description: "Gestión de usuarios del sistema"
   },
   { 
+    icon: Calendar, 
+    label: "Agenda de Audiencias", 
+    href: "/funcionarios/audiencias",
+    roles: ["cj"],
+    description: "Visualización de audiencias"
+  },
+  { 
     icon: Settings, 
-    label: "Centro de Auditoría", 
+    label: "Auditoría", 
     href: "/funcionarios/auditoria",
     roles: ["cj"],
     description: "Supervisión y logs del sistema"
@@ -133,7 +140,14 @@ const navItems: NavItem[] = [
 export const FuncionariosSidebar = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    // Navegar al login y reemplazar el historial para evitar volver atrás
+    navigate("/funcionarios/login", { replace: true });
+  };
 
   const filteredNavItems = navItems.filter((item) => {
     if (!item.roles) return true;
@@ -234,7 +248,7 @@ export const FuncionariosSidebar = () => {
             "w-full text-sidebar-foreground/80 hover:bg-destructive/20 hover:text-destructive",
             collapsed ? "justify-center px-0" : "justify-start"
           )}
-          onClick={logout}
+          onClick={handleLogout}
         >
           <LogOut className="w-5 h-5 shrink-0" />
           {!collapsed && <span className="ml-3">Cerrar Sesión</span>}

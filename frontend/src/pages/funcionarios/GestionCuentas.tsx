@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,6 +12,9 @@ import {
   Filter,
   Download,
   MoreHorizontal,
+  Loader2,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { FuncionariosLayout } from "@/components/funcionarios/FuncionariosLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,7 +61,18 @@ import {
 } from "@/components/ui/form";
 import { toast } from "@/hooks/use-toast";
 import { getFuncionarios, mockFuncionarios, Funcionario } from "@/lib/funcionarios-data";
+import { usuariosService } from "@/services";
 import { cn } from "@/lib/utils";
+
+// Mapeo de roles UI a IDs de rol del backend
+const rolIdMap: Record<string, number> = {
+  cj: 1,      // ADMIN_CJ
+  juez: 2,    // JUEZ
+  secretario: 3, // SECRETARIO
+};
+
+// Dominio institucional fijo
+const DOMINIO_INSTITUCIONAL = "@judicatura.gob.ec";
 
 const funcionarioSchema = z.object({
   nombre: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
@@ -68,7 +82,10 @@ const funcionarioSchema = z.object({
   }),
   unidadJudicial: z.string().min(1, "Seleccione una unidad judicial"),
   materia: z.string().min(1, "Seleccione una materia"),
-  email: z.string().email("Ingrese un correo válido"),
+  emailPrefix: z.string()
+    .min(3, "El usuario debe tener al menos 3 caracteres")
+    .max(30, "El usuario no puede tener más de 30 caracteres")
+    .regex(/^[a-z0-9._-]+$/, "Solo letras minúsculas, números, puntos, guiones y guiones bajos"),
 });
 
 type FuncionarioFormData = z.infer<typeof funcionarioSchema>;
@@ -108,6 +125,10 @@ const GestionCuentas = () => {
     id: string;
     newStatus: Funcionario["estado"];
   } | null>(null);
+  
+  // Estados para verificación de disponibilidad de correo
+  const [emailDisponibilidad, setEmailDisponibilidad] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [emailCheckTimeout, setEmailCheckTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const form = useForm<FuncionarioFormData>({
     resolver: zodResolver(funcionarioSchema),
@@ -117,9 +138,54 @@ const GestionCuentas = () => {
       cargo: undefined,
       unidadJudicial: "",
       materia: "",
-      email: "",
+      emailPrefix: "",
     },
   });
+
+  // Función para verificar disponibilidad del correo con debounce
+  const verificarDisponibilidadEmail = useCallback(async (prefix: string) => {
+    if (prefix.length < 3) {
+      setEmailDisponibilidad("idle");
+      return;
+    }
+
+    setEmailDisponibilidad("checking");
+    
+    try {
+      const correoCompleto = `${prefix.toLowerCase()}${DOMINIO_INSTITUCIONAL}`;
+      const resultado = await usuariosService.verificarDisponibilidad(correoCompleto);
+      setEmailDisponibilidad(resultado.disponible ? "available" : "taken");
+    } catch {
+      setEmailDisponibilidad("idle");
+    }
+  }, []);
+
+  // Observar cambios en el campo emailPrefix
+  const emailPrefixValue = form.watch("emailPrefix");
+  
+  useEffect(() => {
+    // Limpiar timeout anterior
+    if (emailCheckTimeout) {
+      clearTimeout(emailCheckTimeout);
+    }
+
+    // Si estamos editando, no verificar
+    if (editingFuncionario) {
+      setEmailDisponibilidad("idle");
+      return;
+    }
+
+    // Debounce de 500ms
+    const timeout = setTimeout(() => {
+      verificarDisponibilidadEmail(emailPrefixValue);
+    }, 500);
+
+    setEmailCheckTimeout(timeout);
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [emailPrefixValue, editingFuncionario, verificarDisponibilidadEmail]);
 
   useEffect(() => {
     loadFuncionarios();
@@ -163,66 +229,98 @@ const GestionCuentas = () => {
 
   const openCreateDialog = () => {
     setEditingFuncionario(null);
+    setEmailDisponibilidad("idle");
     form.reset({
       nombre: "",
       identificacion: "",
       cargo: undefined,
       unidadJudicial: "",
       materia: "",
-      email: "",
+      emailPrefix: "",
     });
     setIsDialogOpen(true);
   };
 
   const openEditDialog = (funcionario: Funcionario) => {
     setEditingFuncionario(funcionario);
+    setEmailDisponibilidad("idle");
+    // Extraer el prefijo del correo (antes del @)
+    const emailPrefix = funcionario.email.split("@")[0] || "";
     form.reset({
       nombre: funcionario.nombre,
       identificacion: funcionario.identificacion,
       cargo: funcionario.cargo,
       unidadJudicial: funcionario.unidadJudicial,
       materia: funcionario.materia,
-      email: funcionario.email,
+      emailPrefix: emailPrefix,
     });
     setIsDialogOpen(true);
   };
 
   const onSubmit = async (data: FuncionarioFormData) => {
-    // Simulate API call
-    await new Promise((r) => setTimeout(r, 500));
-
-    if (editingFuncionario) {
-      setFuncionarios((prev) =>
-        prev.map((f) =>
-          f.id === editingFuncionario.id ? { ...f, ...data } : f
-        )
-      );
+    // Verificar disponibilidad antes de enviar (solo para creación)
+    if (!editingFuncionario && emailDisponibilidad === "taken") {
       toast({
-        title: "Funcionario actualizado",
-        description: `Los datos de ${data.nombre} han sido actualizados.`,
+        title: "Correo no disponible",
+        description: "El usuario de correo ya está en uso. Por favor, elija otro.",
+        variant: "destructive",
       });
-    } else {
-      const newFuncionario: Funcionario = {
-        id: `new-${Date.now()}`,
-        nombre: data.nombre,
-        identificacion: data.identificacion,
-        cargo: data.cargo,
-        unidadJudicial: data.unidadJudicial,
-        materia: data.materia,
-        email: data.email,
-        estado: "activa",
-        fechaCreacion: new Date().toISOString().split("T")[0],
-        ultimoAcceso: "-",
-        intentosFallidos: 0,
-      };
-      setFuncionarios((prev) => [newFuncionario, ...prev]);
-      toast({
-        title: "Funcionario creado",
-        description: `${data.nombre} ha sido registrado exitosamente.`,
-      });
+      return;
     }
 
-    setIsDialogOpen(false);
+    // Construir el correo completo
+    const correoCompleto = `${data.emailPrefix.toLowerCase()}${DOMINIO_INSTITUCIONAL}`;
+
+    try {
+      if (editingFuncionario) {
+        // Para edición, usamos el servicio de actualización
+        await usuariosService.actualizarUsuario(editingFuncionario.id, {
+          nombresCompletos: data.nombre,
+          correoInstitucional: correoCompleto,
+          rolId: rolIdMap[data.cargo],
+          unidadJudicial: data.unidadJudicial,
+          materia: data.materia,
+        });
+        
+        // Actualizar estado local
+        setFuncionarios((prev) =>
+          prev.map((f) =>
+            f.id === editingFuncionario.id ? { ...f, ...data, email: correoCompleto } : f
+          )
+        );
+        toast({
+          title: "Funcionario actualizado",
+          description: `Los datos de ${data.nombre} han sido actualizados.`,
+        });
+      } else {
+        // Llamar al servicio real - la contraseña se genera automáticamente en el backend
+        const nuevoFuncionario = await usuariosService.crearUsuario({
+          identificacion: data.identificacion,
+          nombresCompletos: data.nombre,
+          correoInstitucional: correoCompleto,
+          rolId: rolIdMap[data.cargo],
+          unidadJudicial: data.unidadJudicial,
+          materia: data.materia,
+        });
+
+        // Refrescar la lista
+        await loadFuncionarios();
+        
+        toast({
+          title: "Funcionario creado",
+          description: `${data.nombre} ha sido registrado. Se ha enviado un correo con las credenciales a ${correoCompleto}.`,
+        });
+      }
+
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error("Error al guardar funcionario:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al guardar el funcionario",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleStatusChange = (id: string, newStatus: Funcionario["estado"]) => {
@@ -230,37 +328,65 @@ const GestionCuentas = () => {
     setIsConfirmDialogOpen(true);
   };
 
+  // Mapeo de estados frontend a backend
+  const estadoFrontendToBackendMap: Record<string, string> = {
+    activa: "ACTIVA",
+    habilitable: "HABILITABLE",
+    suspendida: "SUSPENDIDA",
+    inactiva: "INACTIVA",
+    bloqueada: "BLOQUEADA",
+  };
+
   const confirmStatusChange = async () => {
     if (!pendingStatusChange) return;
 
-    await new Promise((r) => setTimeout(r, 500));
+    try {
+      // Mapear el estado del frontend al formato del backend
+      const estadoBackend = estadoFrontendToBackendMap[pendingStatusChange.newStatus];
+      
+      await usuariosService.actualizarUsuario(pendingStatusChange.id, {
+        estado: estadoBackend,
+      });
 
-    setFuncionarios((prev) =>
-      prev.map((f) =>
-        f.id === pendingStatusChange.id
-          ? { ...f, estado: pendingStatusChange.newStatus }
-          : f
-      )
-    );
+      setFuncionarios((prev) =>
+        prev.map((f) =>
+          f.id === pendingStatusChange.id
+            ? { ...f, estado: pendingStatusChange.newStatus }
+            : f
+        )
+      );
 
-    const funcionario = funcionarios.find((f) => f.id === pendingStatusChange.id);
-    toast({
-      title: "Estado actualizado",
-      description: `La cuenta de ${funcionario?.nombre} ahora está ${pendingStatusChange.newStatus}.`,
-    });
-
-    setIsConfirmDialogOpen(false);
-    setPendingStatusChange(null);
+      const funcionario = funcionarios.find((f) => f.id === pendingStatusChange.id);
+      toast({
+        title: "Estado actualizado",
+        description: `La cuenta de ${funcionario?.nombre} ahora está ${pendingStatusChange.newStatus}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error al cambiar estado",
+        description: error instanceof Error ? error.message : "Error al actualizar el estado",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConfirmDialogOpen(false);
+      setPendingStatusChange(null);
+    }
   };
 
   const getEstadoBadge = (estado: Funcionario["estado"]) => {
     switch (estado) {
       case "activa":
         return <Badge className="bg-success/10 text-success border-success/20">Activa</Badge>;
+      case "habilitable":
+        return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">Pendiente Activación</Badge>;
       case "suspendida":
         return <Badge className="bg-warning/10 text-warning border-warning/20">Suspendida</Badge>;
+      case "bloqueada":
+        return <Badge className="bg-destructive/10 text-destructive border-destructive/20">Bloqueada</Badge>;
       case "inactiva":
         return <Badge className="bg-muted text-muted-foreground">Inactiva</Badge>;
+      default:
+        return <Badge className="bg-muted text-muted-foreground">{estado}</Badge>;
     }
   };
 
@@ -323,8 +449,10 @@ const GestionCuentas = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos los estados</SelectItem>
+                <SelectItem value="habilitable">Pendiente Activación</SelectItem>
                 <SelectItem value="activa">Activa</SelectItem>
                 <SelectItem value="suspendida">Suspendida</SelectItem>
+                <SelectItem value="bloqueada">Bloqueada</SelectItem>
                 <SelectItem value="inactiva">Inactiva</SelectItem>
               </SelectContent>
             </Select>
@@ -566,21 +694,61 @@ const GestionCuentas = () => {
 
               <FormField
                 control={form.control}
-                name="email"
+                name="emailPrefix"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Correo Electrónico</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="usuario@judicatura.gob.ec"
-                        {...field}
-                      />
-                    </FormControl>
+                    <FormLabel>Correo Electrónico Institucional</FormLabel>
+                    <div className="flex items-center gap-0">
+                      <FormControl>
+                        <Input
+                          type="text"
+                          placeholder="usuario"
+                          className="rounded-r-none border-r-0"
+                          {...field}
+                          onChange={(e) => {
+                            // Convertir a minúsculas y eliminar espacios
+                            const value = e.target.value.toLowerCase().replace(/\s/g, "");
+                            field.onChange(value);
+                          }}
+                        />
+                      </FormControl>
+                      <div className="flex items-center px-3 h-10 bg-muted border border-l-0 rounded-r-md text-sm text-muted-foreground">
+                        {DOMINIO_INSTITUCIONAL}
+                      </div>
+                      {/* Indicador de disponibilidad */}
+                      <div className="ml-2 flex items-center">
+                        {emailDisponibilidad === "checking" && (
+                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                        )}
+                        {emailDisponibilidad === "available" && !editingFuncionario && (
+                          <CheckCircle2 className="w-5 h-5 text-success" />
+                        )}
+                        {emailDisponibilidad === "taken" && !editingFuncionario && (
+                          <XCircle className="w-5 h-5 text-destructive" />
+                        )}
+                      </div>
+                    </div>
+                    {emailDisponibilidad === "taken" && !editingFuncionario && (
+                      <p className="text-sm text-destructive mt-1">
+                        Este usuario ya está en uso
+                      </p>
+                    )}
+                    {emailDisponibilidad === "available" && !editingFuncionario && (
+                      <p className="text-sm text-success mt-1">
+                        Usuario disponible
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {/* Nota informativa sobre la contraseña */}
+              {!editingFuncionario && (
+                <p className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
+                  📧 Se generará una contraseña automáticamente y se enviará al correo electrónico del funcionario.
+                </p>
+              )}
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>

@@ -19,14 +19,19 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 const LoginFuncionarios = () => {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/funcionarios";
+  // Función para obtener la ruta del dashboard según el rol
+  const getDashboardRoute = (cargo: string): string => {
+    // Siempre redirigir al dashboard principal de funcionarios
+    // El dashboard se encarga de mostrar contenido según el rol
+    return "/funcionarios";
+  };
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -44,8 +49,10 @@ const LoginFuncionarios = () => {
 
     setIsLoading(false);
 
-    if (result.success) {
-      navigate(from, { replace: true });
+    if (result.success && result.user) {
+      // Redirigir al dashboard según el rol del usuario
+      const dashboardRoute = getDashboardRoute(result.user.cargo);
+      navigate(dashboardRoute, { replace: true });
     } else {
       setError(result.error || "Error al iniciar sesión");
     }
@@ -160,9 +167,9 @@ const LoginFuncionarios = () => {
             <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-border">
               <p className="text-xs font-medium text-muted-foreground mb-2">Credenciales de prueba:</p>
               <div className="space-y-1 text-xs text-muted-foreground font-mono">
-                <p><span className="text-foreground font-semibold">Admin:</span> admin@judicatura.gob.ec / admin123</p>
-                <p><span className="text-foreground font-semibold">Juez:</span> juez@judicatura.gob.ec / juez123</p>
-                <p><span className="text-foreground font-semibold">Secretario:</span> secretario@judicatura.gob.ec / secretario123</p>
+                <p><span className="text-foreground font-semibold">Admin CJ:</span> admin.cj@judicatura.gob.ec</p>
+                <p><span className="text-foreground font-semibold">Juez:</span> juez.gutierrez@judicatura.gob.ec</p>
+                <p><span className="text-foreground font-semibold">Secretario:</span> secretario.paredes@judicatura.gob.ec</p>
               </div>
             </div>
           </CardContent>

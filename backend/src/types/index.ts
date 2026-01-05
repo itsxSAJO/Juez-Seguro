@@ -43,6 +43,7 @@ export interface FuncionarioPublico {
   fechaBloqueo: Date | null;
   fechaCreacion: Date;
   fechaActualizacion: Date;
+  ultimoAcceso?: Date | null;
 }
 
 // Mapeado a la tabla 'roles'
@@ -68,6 +69,8 @@ export interface TokenPayload {
   correo: string;
   rol: UserRole;
   rolId: number;
+  unidadJudicial: string;  // FIA_USB: Atributo de sesión
+  materia: string;         // FIA_USB: Atributo de sesión
   iat?: number;
   exp?: number;
 }

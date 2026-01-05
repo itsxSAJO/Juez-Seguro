@@ -58,6 +58,7 @@ router.get(
       await auditService.log({
         tipoEvento: "CONSULTA_CAUSAS",
         usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
         moduloAfectado: "CASOS",
         descripcion: `Consulta de causas`,
         datosAfectados: { filtros, totalResultados: resultado.total },

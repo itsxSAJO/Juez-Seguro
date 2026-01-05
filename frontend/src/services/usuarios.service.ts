@@ -16,20 +16,21 @@ export interface FiltrosUsuarios {
 }
 
 export interface CrearUsuarioRequest {
-  nombre: string;
   identificacion: string;
-  cargo: UserRole;
+  nombresCompletos: string;
+  correoInstitucional: string;
+  rolId: number;
   unidadJudicial: string;
   materia: string;
-  email: string;
 }
 
 export interface ActualizarUsuarioRequest {
-  nombre?: string;
-  cargo?: UserRole;
+  nombresCompletos?: string;
+  correoInstitucional?: string;
+  rolId?: number;
   unidadJudicial?: string;
   materia?: string;
-  email?: string;
+  estado?: string;
 }
 
 export const usuariosService = {
@@ -62,6 +63,27 @@ export const usuariosService = {
     }
     
     throw new Error(response.error || "Usuario no encontrado");
+  },
+
+  /**
+   * Verifica si un correo electrónico está disponible
+   */
+  async verificarDisponibilidad(correo: string): Promise<{ disponible: boolean }> {
+    try {
+      const response = await api.get<ApiResponse<{ disponible: boolean }>>(
+        `/usuarios/verificar-disponibilidad`,
+        { correo }
+      );
+      
+      if (response.success && response.data) {
+        return response.data;
+      }
+      
+      return { disponible: true };
+    } catch {
+      // Si hay error, asumimos que está disponible para no bloquear el formulario
+      return { disponible: true };
+    }
   },
 
   /**

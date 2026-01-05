@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { FuncionariosLayout } from "@/components/funcionarios/FuncionariosLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +33,8 @@ import { getLogs, mockFuncionarios, LogAuditoria } from "@/lib/funcionarios-data
 
 const CentroAuditoria = () => {
   const { toast } = useToast();
-  const [logs] = useState<LogAuditoria[]>(generateMockLogs(100));
+  const [logs, setLogs] = useState<LogAuditoria[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterUsuario, setFilterUsuario] = useState<string>("todos");
   const [filterAccion, setFilterAccion] = useState<string>("todos");
@@ -41,6 +42,27 @@ const CentroAuditoria = () => {
   const [fechaInicio, setFechaInicio] = useState<Date>(subDays(new Date(), 7));
   const [fechaFin, setFechaFin] = useState<Date>(new Date());
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Cargar logs al montar el componente
+  useEffect(() => {
+    const loadLogs = async () => {
+      setIsLoading(true);
+      try {
+        const data = await getLogs();
+        setLogs(data);
+      } catch (error) {
+        console.error("Error cargando logs:", error);
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los logs de auditoría",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadLogs();
+  }, [toast]);
 
   const acciones = [...new Set(logs.map((l) => l.accion))];
   const modulos = [...new Set(logs.map((l) => l.modulo))];

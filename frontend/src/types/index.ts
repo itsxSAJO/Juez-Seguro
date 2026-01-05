@@ -8,7 +8,7 @@
 // ============================================================================
 export type UserRole = "cj" | "juez" | "secretario";
 
-export type EstadoCuenta = "activa" | "suspendida" | "inactiva";
+export type EstadoCuenta = "activa" | "suspendida" | "inactiva" | "habilitable" | "bloqueada";
 
 export interface Usuario {
   id: string;

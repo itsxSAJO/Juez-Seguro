@@ -6,8 +6,6 @@
 # para cumplir con los requisitos de protección de flujo de información.
 # ============================================================================
 
-version: '3.9'
-
 services:
   # ----------------------------------------------------------------
   # 1. BDD USUARIOS Y ATRIBUTOS (FIA - Identidad y Acceso)

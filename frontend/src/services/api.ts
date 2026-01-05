@@ -46,7 +46,7 @@ class ApiClient {
   }
 
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem("authToken");
+    const token = localStorage.getItem("token");
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
