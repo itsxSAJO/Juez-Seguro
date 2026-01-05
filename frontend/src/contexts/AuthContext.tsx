@@ -47,28 +47,96 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // API Base URL
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
+// Clave para sessionStorage (más seguro que localStorage para tokens)
+const TOKEN_KEY = "auth_token";
+
+/**
+ * Decodifica un JWT para extraer el payload (sin verificar firma)
+ * La verificación real se hace en el backend
+ */
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verifica si un token JWT ha expirado
+ */
+function isTokenExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return true;
+  
+  // exp está en segundos, Date.now() en milisegundos
+  return Date.now() >= payload.exp * 1000;
+}
+
+/**
+ * Extrae los datos del usuario del token JWT
+ */
+function getUserFromToken(token: string): User | null {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+
+  return {
+    id: payload.funcionarioId,
+    nombre: "", // Se obtiene del backend en login, no guardamos en storage
+    identificacion: payload.identificacion,
+    cargo: roleMapping[payload.rol as UserRole] || "secretario",
+    rol: payload.rol,
+    unidadJudicial: payload.unidadJudicial,
+    materia: payload.materia,
+    email: payload.correo,
+    estado: "ACTIVA", // Si tiene token válido, asumimos activa
+  };
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restaurar sesión al cargar
+  // Restaurar sesión al cargar - Solo desde sessionStorage, no localStorage
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    const restoreSession = async () => {
+      // Usar sessionStorage en lugar de localStorage (se limpia al cerrar navegador)
+      const storedToken = sessionStorage.getItem(TOKEN_KEY);
 
-    if (storedToken && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setToken(storedToken);
-      } catch {
-        // Token inválido, limpiar
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+      if (storedToken) {
+        // Verificar si el token no ha expirado
+        if (!isTokenExpired(storedToken)) {
+          const userFromToken = getUserFromToken(storedToken);
+          if (userFromToken) {
+            setToken(storedToken);
+            setUser(userFromToken);
+          } else {
+            // Token inválido
+            sessionStorage.removeItem(TOKEN_KEY);
+          }
+        } else {
+          // Token expirado, limpiar
+          sessionStorage.removeItem(TOKEN_KEY);
+        }
       }
-    }
-    setIsLoading(false);
+
+      // Limpiar datos antiguos de localStorage si existen (migración)
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      
+      setIsLoading(false);
+    };
+
+    restoreSession();
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -109,7 +177,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { success: false, error: data.message || "Error al iniciar sesión" };
       }
 
-      // Login exitoso
+      // Login exitoso - Solo guardamos el token en sessionStorage
+      const receivedToken = data.data.token;
+      
+      // Construir datos del usuario desde la respuesta (para uso inmediato)
       const userData: User = {
         id: data.data.user.funcionarioId,
         nombre: data.data.user.nombresCompletos,
@@ -123,9 +194,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
 
       setUser(userData);
-      setToken(data.data.token);
-      localStorage.setItem("token", data.data.token);
-      localStorage.setItem("user", JSON.stringify(userData));
+      setToken(receivedToken);
+      
+      // Solo guardar el token en sessionStorage (no datos del usuario)
+      sessionStorage.setItem(TOKEN_KEY, receivedToken);
 
       return { success: true, user: userData };
     } catch (error) {
@@ -140,6 +212,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(() => {
     setUser(null);
     setToken(null);
+    sessionStorage.removeItem(TOKEN_KEY);
+    // Limpiar también localStorage por si quedaron datos antiguos
     localStorage.removeItem("token");
     localStorage.removeItem("user");
   }, []);
@@ -163,7 +237,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
+    // En desarrollo, esto puede ocurrir durante HMR - mostrar warning en lugar de error
+    if (import.meta.env.DEV) {
+      console.warn("useAuth called outside of AuthProvider - this may be a HMR issue. Try refreshing the page.");
+      // Retornar un objeto dummy para evitar crash durante HMR
+      return {
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: true,
+        login: async () => ({ success: false, error: "Context not ready" }),
+        logout: () => {},
+      } as AuthContextType;
+    }
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
+
+// Type for the context (needed for fallback)
+type AuthContextType = ReturnType<typeof useAuth>;

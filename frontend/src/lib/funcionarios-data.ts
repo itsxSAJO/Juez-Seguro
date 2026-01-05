@@ -101,28 +101,34 @@ export const mockFuncionarios: Funcionario[] = [
   },
 ];
 
-// Generadores mock
+// Generadores mock - Use UUID-like IDs to avoid duplicates
+let causaIdCounter = 0;
 const generateMockCausas = (count: number = 30): Causa[] => {
   const estados: Causa["estado"][] = ["en_tramite", "resuelto", "archivado", "suspendido"];
   const estadosProcesales = ["Calificación", "Citación", "Contestación", "Audiencia", "Sentencia"];
   const prioridades: Causa["prioridad"][] = ["normal", "urgente", "alta"];
 
-  return Array.from({ length: count }, (_, i) => ({
-    id: `causa-${i + 1}`,
-    numeroExpediente: `17${100 + i}-2024-${String(i + 1).padStart(5, "0")}A`,
-    materia: materias[i % materias.length],
-    tipoAccion: tiposAccion[i % tiposAccion.length],
-    unidadJudicial: unidadesJudiciales[i % unidadesJudiciales.length],
-    actorPseudonimo: `AP-${100 + i}`,
-    demandadoPseudonimo: `DP-${200 + i}`,
-    juezAsignadoId: "2",
-    juezAsignadoNombre: mockFuncionarios[1].nombre,
-    estado: estados[i % estados.length],
-    estadoProcesal: estadosProcesales[i % estadosProcesales.length],
-    fechaIngreso: generateDate(Math.floor(Math.random() * 365)),
-    fechaActualizacion: generateDate(Math.floor(Math.random() * 30)),
-    prioridad: prioridades[i % prioridades.length],
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    causaIdCounter++;
+    return {
+      id: `causa-${causaIdCounter}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      numeroExpediente: `17${100 + i}-2024-${String(i + 1).padStart(5, "0")}A`,
+      materia: materias[i % materias.length],
+      tipoAccion: tiposAccion[i % tiposAccion.length],
+      unidadJudicial: unidadesJudiciales[i % unidadesJudiciales.length],
+      // Partes procesales (información pública)
+      actorNombre: `Actor Mock ${100 + i}`,
+      demandadoNombre: `Demandado Mock ${200 + i}`,
+      // Funcionarios
+      juezAsignadoId: "2",
+      juezAsignadoNombre: mockFuncionarios[1].nombre,
+      estado: estados[i % estados.length],
+      estadoProcesal: estadosProcesales[i % estadosProcesales.length],
+      fechaIngreso: generateDate(Math.floor(Math.random() * 365)),
+      fechaActualizacion: generateDate(Math.floor(Math.random() * 30)),
+      prioridad: prioridades[i % prioridades.length],
+    };
+  });
 };
 
 const generateMockAudiencias = (count: number = 20): Audiencia[] => {
@@ -243,22 +249,13 @@ export const getFuncionarios = async (): Promise<Funcionario[]> => {
 };
 
 export const getCausas = async (): Promise<Causa[]> => {
-  if (USE_MOCK) {
-    await new Promise((r) => setTimeout(r, 600));
-    return generateMockCausas(30);
-  }
-
+  // Siempre usar API real
   const response = await causasService.getCausas();
   return response.data;
 };
 
 export const getCausaById = async (id: string): Promise<Causa | null> => {
-  if (USE_MOCK) {
-    await new Promise((r) => setTimeout(r, 400));
-    const causas = generateMockCausas(30);
-    return causas.find((c) => c.id === id) || causas[0];
-  }
-
+  // Siempre usar API real
   try {
     return await causasService.getCausaById(id);
   } catch {

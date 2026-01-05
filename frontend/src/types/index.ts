@@ -48,16 +48,19 @@ export interface Causa {
   materia: string;
   tipoAccion: string;
   unidadJudicial: string;
-  // Datos pseudonimizados para protección de identidad
-  actorPseudonimo: string;
-  demandadoPseudonimo: string;
+  // Partes procesales (información pública - sin pseudonimizar)
+  actorNombre: string;
+  demandadoNombre: string;
+  // Funcionarios (pseudonimizados para protección de identidad)
   juezAsignadoId: string;
-  juezAsignadoNombre: string;
+  juezAsignadoNombre: string; // Pseudónimo del juez
+  secretarioPseudonimo?: string; // Pseudónimo del secretario que registró
   estado: EstadoCausa;
   estadoProcesal: string;
   fechaIngreso: string;
   fechaActualizacion: string;
   prioridad: PrioridadCausa;
+  descripcion?: string;
 }
 
 export interface CausaDetalle extends Causa {

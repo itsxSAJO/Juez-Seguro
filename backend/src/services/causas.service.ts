@@ -2,18 +2,42 @@
 // JUEZ SEGURO BACKEND - Servicio de Causas (FDP)
 // Protección de datos con pseudonimización
 // Tablas: causas, mapa_pseudonimos, expedientes
+// HU-SJ-001: Registro de nuevas causas con validación de scope
 // ============================================================================
 
-import { casesPool } from "../db/connection.js";
+import { casesPool, usersPool } from "../db/connection.js";
 import crypto from "crypto";
 import { auditService } from "./audit.service.js";
-import type { Causa, CausaPublica, EstadoProcesal, Expediente, MapaPseudonimo } from "../types/index.js";
+import type { Causa, CausaPublica, EstadoProcesal, Expediente, MapaPseudonimo, TokenPayload } from "../types/index.js";
+
+// ============================================================================
+// INTERFACES
+// ============================================================================
 
 interface CrearCausaInput {
-  numeroProceso: string;
   materia: string;
   tipoProceso: string;
   unidadJudicial: string;
+  descripcion?: string;
+  // Partes procesales (información pública)
+  actorNombre?: string;
+  actorIdentificacion?: string;
+  demandadoNombre?: string;
+  demandadoIdentificacion?: string;
+}
+
+interface ValidacionScopeResult {
+  valido: boolean;
+  error?: string;
+  codigo?: "MATERIA_NO_COINCIDE" | "UNIDAD_NO_COINCIDE" | "SCOPE_INVALIDO";
+}
+
+interface JuezDisponible {
+  funcionario_id: number;
+  nombres_completos: string;
+  unidad_judicial: string;
+  materia: string;
+  pseudonimo?: string;
 }
 
 interface FiltrosCausas {
@@ -26,11 +50,179 @@ interface FiltrosCausas {
   pageSize?: number;
 }
 
+// ============================================================================
+// CONSTANTES
+// ============================================================================
+const ROL_JUEZ_ID = 2; // Según el esquema: ADMIN_CJ=1, JUEZ=2, SECRETARIO=3
+
 /**
  * Servicio de Causas - FDP (Functional Data Protection)
  * Implementa FDP_IFF (Flujo de información anonimizado)
+ * HU-SJ-001: Registro de causas con validación de scope (FIA_ATD)
  */
 class CausasService {
+  // ============================================================================
+  // VALIDACIÓN DE SCOPE (FIA_ATD) - HU-SJ-001
+  // ============================================================================
+
+  /**
+   * Valida que el secretario tenga permisos para crear la causa
+   * Compara Token.UnidadJudicial/Materia con Formulario.UnidadJudicial/Materia
+   * 
+   * @param secretario - Datos del token del secretario
+   * @param input - Datos de la causa a crear
+   * @returns Resultado de la validación
+   */
+  validarScope(secretario: TokenPayload, input: CrearCausaInput): ValidacionScopeResult {
+    // Normalizar strings para comparación (ignorar mayúsculas/minúsculas y espacios)
+    const normalizarString = (str: string): string => 
+      str.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+    const secretarioMateria = normalizarString(secretario.materia);
+    const causaMateria = normalizarString(input.materia);
+    const secretarioUnidad = normalizarString(secretario.unidadJudicial);
+    const causaUnidad = normalizarString(input.unidadJudicial);
+
+    // Validar materia
+    if (secretarioMateria !== causaMateria) {
+      return {
+        valido: false,
+        error: `No tiene permisos para crear causas de materia "${input.materia}". Su materia asignada es "${secretario.materia}".`,
+        codigo: "MATERIA_NO_COINCIDE",
+      };
+    }
+
+    // Validar unidad judicial
+    if (secretarioUnidad !== causaUnidad) {
+      return {
+        valido: false,
+        error: `No tiene permisos para crear causas en la unidad "${input.unidadJudicial}". Su unidad asignada es "${secretario.unidadJudicial}".`,
+        codigo: "UNIDAD_NO_COINCIDE",
+      };
+    }
+
+    return { valido: true };
+  }
+
+  // ============================================================================
+  // ASIGNACIÓN DE JUEZ (SORTEO) - HU-SJ-001
+  // ============================================================================
+
+  /**
+   * Obtiene jueces disponibles para asignación según unidad judicial y materia
+   * Solo considera jueces con estado ACTIVA
+   */
+  async getJuecesDisponibles(unidadJudicial: string, materia: string): Promise<JuezDisponible[]> {
+    const client = await usersPool.connect();
+
+    try {
+      // Buscar jueces activos en la misma unidad y materia
+      const result = await client.query(
+        `SELECT f.funcionario_id, f.nombres_completos, f.unidad_judicial, f.materia
+         FROM funcionarios f
+         JOIN roles r ON f.rol_id = r.rol_id
+         WHERE r.rol_id = $1
+           AND f.estado = 'ACTIVA'
+           AND LOWER(TRIM(f.materia)) = LOWER(TRIM($2))
+           AND LOWER(TRIM(f.unidad_judicial)) = LOWER(TRIM($3))
+         ORDER BY f.funcionario_id`,
+        [ROL_JUEZ_ID, materia, unidadJudicial]
+      );
+
+      return result.rows as JuezDisponible[];
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Selecciona un juez al azar de los disponibles (sorteo)
+   * Implementa asignación equitativa considerando carga de trabajo
+   */
+  async seleccionarJuez(unidadJudicial: string, materia: string): Promise<JuezDisponible | null> {
+    const juecesDisponibles = await this.getJuecesDisponibles(unidadJudicial, materia);
+
+    if (juecesDisponibles.length === 0) {
+      return null;
+    }
+
+    // Obtener carga de trabajo de cada juez (cantidad de causas activas)
+    const casesClient = await casesPool.connect();
+    
+    try {
+      const juecesConCarga = await Promise.all(
+        juecesDisponibles.map(async (juez) => {
+          const cargaResult = await casesClient.query(
+            `SELECT COUNT(*) as carga 
+             FROM causas 
+             WHERE juez_asignado_id = $1 
+               AND estado_procesal NOT IN ('RESUELTA', 'ARCHIVADA')`,
+            [juez.funcionario_id]
+          );
+          return {
+            ...juez,
+            carga: parseInt(cargaResult.rows[0].carga, 10),
+          };
+        })
+      );
+
+      // Ordenar por menor carga y seleccionar uno de los que tienen menor carga
+      juecesConCarga.sort((a, b) => a.carga - b.carga);
+      const menorCarga = juecesConCarga[0].carga;
+      const juecesConMenorCarga = juecesConCarga.filter(j => j.carga === menorCarga);
+
+      // Sorteo aleatorio entre los de menor carga
+      const indiceAleatorio = Math.floor(Math.random() * juecesConMenorCarga.length);
+      return juecesConMenorCarga[indiceAleatorio];
+    } finally {
+      casesClient.release();
+    }
+  }
+
+  // ============================================================================
+  // GENERACIÓN DE NÚMERO DE PROCESO
+  // ============================================================================
+
+  /**
+   * Genera un número de proceso único
+   * Formato: PROVINCIA-JUZGADO-AÑO-SECUENCIAL (ej: 17-281-2026-00001)
+   */
+  async generarNumeroProceso(unidadJudicial: string): Promise<string> {
+    const client = await casesPool.connect();
+
+    try {
+      const year = new Date().getFullYear();
+      
+      // Obtener el último número secuencial del año
+      const ultimoResult = await client.query(
+        `SELECT numero_proceso FROM causas 
+         WHERE numero_proceso LIKE $1
+         ORDER BY fecha_creacion DESC LIMIT 1`,
+        [`%-${year}-%`]
+      );
+
+      let secuencial = 1;
+      if (ultimoResult.rows.length > 0) {
+        const partes = ultimoResult.rows[0].numero_proceso.split("-");
+        if (partes.length >= 4) {
+          secuencial = parseInt(partes[3], 10) + 1;
+        }
+      }
+
+      // Generar código de provincia (basado en unidad judicial)
+      const provincia = "17"; // Por defecto Pichincha, se puede mejorar
+      const juzgado = Math.floor(100 + Math.random() * 899);
+      
+      return `${provincia}${juzgado}-${year}-${String(secuencial).padStart(5, "0")}`;
+    } finally {
+      client.release();
+    }
+  }
+
+  // ============================================================================
+  // PSEUDÓNIMOS (FDP_IFF)
+  // ============================================================================
+
   /**
    * Genera un pseudónimo único para un juez (FDP_IFF)
    */
@@ -74,11 +266,145 @@ class CausasService {
     }
   }
 
+  // ============================================================================
+  // CREACIÓN DE CAUSA - HU-SJ-001
+  // ============================================================================
+
   /**
-   * Crea una nueva causa
+   * Crea una nueva causa con asignación automática de juez
+   * Implementa HU-SJ-001 con validación de scope (FIA_ATD)
+   * 
+   * @param input - Datos de la causa
+   * @param secretario - Token del secretario creador (para validación de scope)
+   * @param ip - IP de origen
+   * @param userAgent - User agent
+   */
+  async crearCausaConValidacion(
+    input: CrearCausaInput,
+    secretario: TokenPayload,
+    ip: string,
+    userAgent: string
+  ): Promise<{ causa: Causa; juezAsignado: string }> {
+    // 1. Validar scope (FIA_ATD)
+    const validacionScope = this.validarScope(secretario, input);
+    if (!validacionScope.valido) {
+      // Registrar intento de acceso denegado
+      await auditService.log({
+        tipoEvento: "ACCESO_DENEGADO",
+        usuarioId: secretario.funcionarioId,
+        usuarioCorreo: secretario.correo,
+        moduloAfectado: "CASOS",
+        descripcion: `Intento de crear causa fuera de scope: ${validacionScope.error}`,
+        datosAfectados: { 
+          inputMateria: input.materia, 
+          inputUnidad: input.unidadJudicial,
+          secretarioMateria: secretario.materia,
+          secretarioUnidad: secretario.unidadJudicial,
+          codigo: validacionScope.codigo
+        },
+        ipOrigen: ip,
+        userAgent,
+      });
+      
+      const error = new Error(validacionScope.error!) as any;
+      error.code = validacionScope.codigo;
+      error.status = 403;
+      throw error;
+    }
+
+    // 2. Seleccionar juez por sorteo (considerando carga de trabajo)
+    const juezSeleccionado = await this.seleccionarJuez(input.unidadJudicial, input.materia);
+    
+    if (!juezSeleccionado) {
+      const error = new Error(`No hay jueces disponibles para la materia "${input.materia}" en la unidad "${input.unidadJudicial}".`) as any;
+      error.code = "NO_JUECES_DISPONIBLES";
+      error.status = 400;
+      throw error;
+    }
+
+    // 3. Generar número de proceso único
+    const numeroProceso = await this.generarNumeroProceso(input.unidadJudicial);
+
+    // 4. Obtener o crear pseudónimo del juez seleccionado
+    const juezPseudonimo = await this.obtenerPseudonimo(juezSeleccionado.funcionario_id);
+
+    // 5. Crear la causa
+    const client = await casesPool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      // Insertar causa
+      const resultCausa = await client.query(
+        `INSERT INTO causas (
+          numero_proceso, materia, tipo_proceso, unidad_judicial,
+          juez_asignado_id, juez_pseudonimo, secretario_creador_id, estado_procesal,
+          actor_nombre, demandado_nombre, descripcion
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'INICIADA', $8, $9, $10)
+        RETURNING *`,
+        [
+          numeroProceso,
+          input.materia,
+          input.tipoProceso,
+          input.unidadJudicial,
+          juezSeleccionado.funcionario_id,
+          juezPseudonimo,
+          secretario.funcionarioId,
+          input.actorNombre || null,
+          input.demandadoNombre || null,
+          input.descripcion || null,
+        ]
+      );
+
+      const causa = resultCausa.rows[0] as Causa;
+
+      // 6. Crear expediente electrónico asociado automáticamente
+      await client.query(
+        `INSERT INTO expedientes (causa_id, observaciones)
+         VALUES ($1, $2)`,
+        [causa.causa_id, `Expediente creado automáticamente. ${input.descripcion || ""}`]
+      );
+
+      await client.query("COMMIT");
+
+      // 7. Registrar en auditoría
+      await auditService.log({
+        tipoEvento: "CREACION_CAUSA",
+        usuarioId: secretario.funcionarioId,
+        usuarioCorreo: secretario.correo,
+        moduloAfectado: "CASOS",
+        descripcion: `Causa ${numeroProceso} creada con asignación automática de juez`,
+        datosAfectados: { 
+          causaId: causa.causa_id, 
+          numeroProceso,
+          materia: input.materia,
+          unidadJudicial: input.unidadJudicial,
+          juezAsignadoId: juezSeleccionado.funcionario_id,
+          juezPseudonimo,
+          metodoAsignacion: "sorteo_equitativo"
+        },
+        ipOrigen: ip,
+        userAgent,
+      });
+
+      return {
+        causa,
+        juezAsignado: juezPseudonimo, // Solo devolvemos pseudónimo, nunca datos reales
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Crea una nueva causa (método legacy - mantener por compatibilidad)
+   * @deprecated Usar crearCausaConValidacion para HU-SJ-001
    */
   async crearCausa(
-    input: CrearCausaInput,
+    input: CrearCausaInput & { numeroProceso: string },
     juezAsignadoId: number,
     secretarioCreadorId: number,
     ip: string,
@@ -339,7 +665,8 @@ class CausasService {
   }
 
   /**
-   * Convierte causa a formato público (sin IDs reales)
+   * Convierte causa a formato público (sin IDs reales de funcionarios)
+   * Nota: Actor y demandado son información pública, solo funcionarios usan pseudónimos
    */
   private toPublic(c: Causa): CausaPublica {
     return {
@@ -348,9 +675,15 @@ class CausasService {
       materia: c.materia,
       tipoProceso: c.tipo_proceso,
       unidadJudicial: c.unidad_judicial,
-      juezPseudonimo: c.juez_pseudonimo, // Solo pseudónimo, nunca ID real
+      juezPseudonimo: c.juez_pseudonimo, // Funcionario: pseudónimo
       estadoProcesal: c.estado_procesal,
       fechaCreacion: c.fecha_creacion,
+      descripcion: c.descripcion,
+      // Partes procesales: información pública (nombres reales)
+      actorNombre: c.actor_nombre,
+      demandadoNombre: c.demandado_nombre,
+      // Funcionario que registró: pseudónimo
+      secretarioPseudonimo: c.secretario_pseudonimo,
     };
   }
 }

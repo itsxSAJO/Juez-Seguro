@@ -104,8 +104,13 @@ export interface Causa {
   juez_asignado_id: number;
   juez_pseudonimo: string;
   secretario_creador_id: number;
+  secretario_pseudonimo?: string;
   estado_procesal: EstadoProcesal;
   fecha_creacion: Date;
+  descripcion?: string;
+  // Partes procesales (información pública, sin pseudonimizar)
+  actor_nombre?: string;
+  demandado_nombre?: string;
 }
 
 // Vista pública de causa (para ciudadanos)
@@ -118,6 +123,12 @@ export interface CausaPublica {
   juezPseudonimo: string; // Solo pseudónimo, nunca ID real
   estadoProcesal: EstadoProcesal;
   fechaCreacion: Date;
+  descripcion?: string;
+  // Partes procesales (información pública)
+  actorNombre?: string;
+  demandadoNombre?: string;
+  // Funcionario que registró (pseudonimizado)
+  secretarioPseudonimo?: string;
 }
 
 // Mapeado a la tabla 'expedientes'
@@ -182,6 +193,7 @@ export interface Documento {
   tamano?: number;
   tamanioBytes?: number; // Alias
   fecha_subida: Date;
+  fechaSubida?: Date; // Alias
   subido_por_id?: number;
   subidoPorId?: number; // Alias
   subidoPorNombre?: string; // Alias
