@@ -469,7 +469,7 @@ const ExpedienteCausa = () => {
                               </div>
                             </td>
                             <td className="p-4 text-sm text-muted-foreground">
-                              {doc.fechaSubida ? format(new Date(doc.fechaSubida), "dd/MM/yyyy HH:mm") : "-"}
+                              {doc.fechaSubida ? format(new Date(doc.fechaSubida), "dd/MM/yyyy HH:mm", { locale: es }) : "-"}
                             </td>
                             <td className="p-4">
                               {doc.estado === "firmado" ? (
@@ -481,8 +481,6 @@ const ExpedienteCausa = () => {
                                 <Badge className="bg-warning text-warning-foreground">Pendiente</Badge>
                               ) : doc.estado === "borrador" ? (
                                 <Badge variant="secondary">Borrador</Badge>
-                              ) : doc.estado === "activo" ? (
-                                <Badge className="bg-success/80 text-success-foreground">Activo</Badge>
                               ) : (
                                 <Badge className="bg-info text-info-foreground">Notificado</Badge>
                               )}
