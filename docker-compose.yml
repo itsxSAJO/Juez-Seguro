@@ -1,0 +1,140 @@
+# ============================================================================
+# JUEZ SEGURO - Infraestructura de Bases de Datos
+# Sistema Judicial Electrónico con Common Criteria
+# ============================================================================
+# Este archivo configura tres nodos PostgreSQL aislados en una red interna
+# para cumplir con los requisitos de protección de flujo de información.
+# ============================================================================
+
+version: '3.9'
+
+services:
+  # ----------------------------------------------------------------
+  # 1. BDD USUARIOS Y ATRIBUTOS (FIA - Identidad y Acceso)
+  # Contiene: Credenciales, Roles, Atributos de Seguridad.
+  # Propósito: Gestión centralizada de autenticación y autorización
+  # ----------------------------------------------------------------
+  db_usuarios:
+    image: postgres:15-alpine
+    container_name: juez_seguro_db_users
+    restart: always
+    environment:
+      POSTGRES_DB: db_usuarios
+      POSTGRES_USER: admin_users
+      POSTGRES_PASSWORD: ${DB_PASS_USERS}
+      # Configuración de seguridad PostgreSQL (md5 para desarrollo)
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - ./scripts/usuarios:/docker-entrypoint-initdb.d:ro
+      - pg_data_users:/var/lib/postgresql/data
+    networks:
+      - backend_secure_net
+    ports:
+      - "5435:5432" # Cambiado de 5432 a 5435 para evitar conflicto con PostgreSQL local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin_users -d db_usuarios"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------
+  # 2. BDD CASOS Y PSEUDÓNIMOS (FDP - Operación Anonimizada)
+  # Contiene: Expedientes, Mapeo de IDs Anónimos, Documentos.
+  # Propósito: Almacenamiento seguro de causas judiciales con
+  #            pseudonimización para protección de datos sensibles
+  # ----------------------------------------------------------------
+  db_casos:
+    image: postgres:15-alpine
+    container_name: juez_seguro_db_cases
+    restart: always
+    environment:
+      POSTGRES_DB: db_casos
+      POSTGRES_USER: admin_cases
+      POSTGRES_PASSWORD: ${DB_PASS_CASES}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - ./scripts/casos:/docker-entrypoint-initdb.d:ro
+      - pg_data_cases:/var/lib/postgresql/data
+    networks:
+      - backend_secure_net
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin_cases -d db_casos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------
+  # 3. BDD LOGS DE AUDITORÍA (FAU - Trazabilidad Inmutable)
+  # Contiene: Registros de eventos, hashes de integridad.
+  # Propósito: Registro inmutable de todas las acciones del sistema
+  #            para cumplir con requisitos de auditoría Common Criteria
+  # ----------------------------------------------------------------
+  db_logs:
+    image: postgres:15-alpine
+    container_name: juez_seguro_db_logs
+    restart: always
+    environment:
+      POSTGRES_DB: db_logs
+      POSTGRES_USER: admin_logs
+      POSTGRES_PASSWORD: ${DB_PASS_LOGS}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - ./scripts/logs:/docker-entrypoint-initdb.d:ro
+      - pg_data_logs:/var/lib/postgresql/data
+    networks:
+      - backend_secure_net
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin_logs -d db_logs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------
+  # 4. ADMINER - Panel de Administración (Solo Desarrollo)
+  # Interfaz web para gestionar las bases de datos durante desarrollo
+  # ----------------------------------------------------------------
+  adminer:
+    image: adminer:4-standalone
+    container_name: juez_seguro_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - backend_secure_net
+    environment:
+      ADMINER_DEFAULT_SERVER: db_usuarios
+    profiles:
+      - dev # Solo se inicia con: docker-compose --profile dev up
+    depends_on:
+      - db_usuarios
+      - db_casos
+      - db_logs
+
+# ============================================================================
+# REDES - Aislamiento de Tráfico
+# ============================================================================
+networks:
+  backend_secure_net:
+    driver: bridge
+    # internal: true # Deshabilitado para desarrollo. Habilitar en producción
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ============================================================================
+# VOLÚMENES - Persistencia de Datos
+# ============================================================================
+volumes:
+  pg_data_users:
+    name: juez_seguro_users_data
+  pg_data_cases:
+    name: juez_seguro_cases_data
+  pg_data_logs:
+    name: juez_seguro_logs_data

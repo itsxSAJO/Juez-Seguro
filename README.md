@@ -1,73 +1,179 @@
-# Welcome to your Lovable project
+# 🏛️ Juez Seguro
 
-## Project info
+Sistema Judicial Electrónico con controles de seguridad basados en **Common Criteria**.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+> Proyecto académico - EPN | 8vo Semestre | Desarrollo de Software Seguro
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## 📁 Estructura del Proyecto
 
-**Use Lovable**
+```
+Juez-Seguro/
+├── backend/              # API Express.js + TypeScript
+│   ├── src/
+│   │   ├── config/       # Configuración centralizada
+│   │   ├── db/           # Conexiones a PostgreSQL
+│   │   ├── middleware/   # Autenticación JWT
+│   │   ├── routes/       # Endpoints REST
+│   │   ├── services/     # Lógica de negocio
+│   │   └── types/        # Definiciones TypeScript
+│   ├── .env              # Variables de entorno (no subir a git)
+│   └── package.json
+│
+├── frontend/             # React + Vite + TypeScript
+│   ├── src/
+│   │   ├── components/   # Componentes React
+│   │   ├── contexts/     # Context API (Auth)
+│   │   ├── hooks/        # Custom hooks
+│   │   ├── lib/          # Utilidades y adaptadores
+│   │   ├── pages/        # Páginas de la aplicación
+│   │   ├── services/     # Servicios API
+│   │   └── types/        # Tipos compartidos
+│   ├── .env              # Variables Vite
+│   └── package.json
+│
+├── scripts/              # Scripts SQL de inicialización
+│   ├── usuarios/         # Schema FIA (autenticación)
+│   ├── casos/            # Schema FDP (datos protegidos)
+│   └── logs/             # Schema FAU (auditoría)
+│
+├── docker-compose.yml    # Infraestructura PostgreSQL
+├── .env                  # Variables para Docker (DB passwords)
+└── README.md
+```
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🔐 Controles Common Criteria
 
-**Use your preferred IDE**
+| Familia | Componente | Descripción |
+|---------|------------|-------------|
+| **FIA** | Identificación y Autenticación | Bcrypt (12 rounds), bloqueo tras 5 intentos, JWT 30min |
+| **FDP** | Protección de Datos | Pseudonimización SHA-256, bases de datos aisladas |
+| **FAU** | Auditoría | Logs inmutables con hash encadenado |
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+---
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## 🚀 Inicio Rápido
 
-Follow these steps:
+### 1. Configurar Variables de Entorno
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+```bash
+# Raíz (para Docker)
+cp .env.example .env
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Ya configurados para desarrollo:
+# - backend/.env
+# - frontend/.env
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
+### 2. Iniciar Bases de Datos
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
+docker-compose up -d
+```
+
+Esto levanta 3 contenedores PostgreSQL:
+- `db_usuarios` → puerto 5432
+- `db_casos` → puerto 5433  
+- `db_logs` → puerto 5434
+
+### 3. Iniciar Backend
+
+```bash
+cd backend
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+API disponible en: `http://localhost:3000/api`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 4. Iniciar Frontend
 
-**Use GitHub Codespaces**
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Aplicación en: `http://localhost:5173`
 
-## What technologies are used for this project?
+---
 
-This project is built with:
+## 🔑 Credenciales de Prueba
 
-- Vite
+| Rol | Email | Contraseña |
+|-----|-------|------------|
+| CJ (Admin) | cj@judicatura.gob.ec | cj123 |
+| Juez | juez@judicatura.gob.ec | juez123 |
+| Secretario | secretario@judicatura.gob.ec | secretario123 |
+
+---
+
+## 📡 API Endpoints
+
+### Autenticación
+- `POST /api/auth/login` - Iniciar sesión
+- `POST /api/auth/logout` - Cerrar sesión
+- `GET /api/auth/me` - Usuario actual
+
+### Causas (requiere auth)
+- `GET /api/causas` - Listar causas
+- `POST /api/causas` - Crear causa
+- `GET /api/causas/:id` - Detalle causa
+
+### Audiencias (requiere auth)
+- `GET /api/audiencias` - Listar audiencias
+- `GET /api/audiencias/hoy` - Audiencias del día
+- `POST /api/audiencias` - Programar audiencia
+
+### Portal Ciudadano (público)
+- `GET /api/publico/buscar?cedula=XXX` - Buscar procesos
+- `GET /api/publico/proceso/:id` - Detalle proceso
+
+### Auditoría (solo CJ)
+- `GET /api/auditoria` - Logs de auditoría
+- `GET /api/auditoria/verificar-integridad` - Verificar cadena hash
+
+---
+
+## 🛠️ Tecnologías
+
+### Backend
+- Node.js + Express.js
+- TypeScript (ESM)
+- PostgreSQL + pg driver
+- bcryptjs, jsonwebtoken, Zod, Helmet
+
+### Frontend
+- React 18 + Vite
 - TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- Tailwind CSS + shadcn/ui
+- React Router DOM
 
-## How can I deploy this project?
+### Infraestructura
+- Docker + Docker Compose
+- PostgreSQL 15 Alpine
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+---
 
-## Can I connect a custom domain to my Lovable project?
+## 👨‍💻 Desarrollo
 
-Yes, you can!
+```bash
+# Backend (modo desarrollo con hot reload)
+cd backend && npm run dev
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+# Frontend (modo desarrollo)
+cd frontend && npm run dev
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+# Build producción
+cd backend && npm run build
+cd frontend && npm run build
+```
+
+---
+
+## 📝 Licencia
+
+Proyecto académico - EPN 2024-2025
