@@ -205,7 +205,7 @@ export function verificarPropiedadDocumento(documentoParamName: string = "docume
         // Obtener la causa asociada al documento
         const result = await client.query(
           `SELECT 
-            d.documento_id,
+            d.id,
             d.causa_id,
             c.numero_proceso,
             c.juez_asignado_id,
@@ -213,7 +213,7 @@ export function verificarPropiedadDocumento(documentoParamName: string = "docume
             d.nombre
            FROM documentos d
            JOIN causas c ON d.causa_id = c.causa_id
-           WHERE d.documento_id = $1`,
+           WHERE d.id = $1`,
           [documentoId]
         );
 

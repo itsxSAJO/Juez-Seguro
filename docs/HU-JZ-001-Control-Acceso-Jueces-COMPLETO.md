@@ -534,11 +534,31 @@ ORDER BY intentos_idor DESC;
 
 ## 👥 Roles y Permisos
 
-| Rol | Acceso a Causas | Bypass Validación |
-|-----|-----------------|-------------------|
-| **JUEZ** | Solo causas asignadas | ❌ No |
-| **SECRETARIO** | Causas de su unidad/materia | ✅ Sí |
-| **ADMIN_CJ** | Todas las causas | ✅ Sí |
+| Rol | Acceso a Causas | Filtro Aplicado | Bypass Validación |
+|-----|-----------------|-----------------|-------------------|
+| **JUEZ** | Solo causas asignadas | `juez_asignado_id = funcionarioId` | ❌ No |
+| **SECRETARIO** | Causas de su unidad/materia | `unidad_judicial = X AND materia = Y` | ✅ Sí (parcial) |
+| **ADMIN_CJ** | Todas las causas | Sin filtro | ✅ Sí (total) |
+
+### Detalle de Filtros por Rol
+
+**JUEZ**:
+```typescript
+if (req.user?.rol === "JUEZ") {
+  filtros.juezAsignadoId = req.user.funcionarioId;
+}
+```
+
+**SECRETARIO**:
+```typescript
+if (req.user?.rol === "SECRETARIO") {
+  filtros.unidadJudicial = req.user.unidadJudicial;
+  filtros.materia = req.user.materia;
+}
+```
+
+**ADMIN_CJ**:
+- Sin filtro adicional (acceso completo)
 
 ---
 

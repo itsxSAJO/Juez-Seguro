@@ -30,8 +30,11 @@ export interface Funcionario extends Usuario {
   ultimoAcceso: string;
 }
 
-// Determina si usar datos mock o API real
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA === "true";
+// ============================================================================
+// IMPORTANTE: Sistema configurado para usar BACKEND REAL
+// Los mocks están deshabilitados permanentemente
+// ============================================================================
+const USE_MOCK = false; // Siempre usar backend real
 
 // ============================================================================
 // DATOS MOCK (para desarrollo sin backend)

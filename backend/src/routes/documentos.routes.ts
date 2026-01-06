@@ -15,11 +15,12 @@ const router = Router();
 // Esquemas de validación
 // ============================================================================
 
+// Nota: causaId es un SERIAL (entero) en la base de datos, no UUID
 const subirDocumentoSchema = z.object({
-  causaId: z.string().uuid("ID de causa inválido"),
+  causaId: z.string().regex(/^\d+$/, "ID de causa debe ser un número válido"),
   tipo: z.enum(["demanda", "contestacion", "prueba", "sentencia", "auto", "providencia", "otro"]),
-  nombre: z.string().min(1, "Nombre es requerido"),
-  mimeType: z.string().optional(),
+  nombreOriginal: z.string().min(1, "Nombre del archivo es requerido"),
+  contenido: z.string().min(1, "Contenido del archivo es requerido"), // Base64
 });
 
 // ============================================================================
@@ -49,6 +50,84 @@ router.get(
         success: true,
         data: documentos,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/documentos/:id/ver
+ * Visualiza el archivo PDF en el navegador
+ * HU-SJ-002: Acceso seguro al contenido del archivo
+ * IMPORTANTE: Esta ruta debe estar ANTES de /:id para que Express la matchee correctamente
+ */
+router.get(
+  "/:id/ver",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  verificarPropiedadDocumento("id"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const archivo = await documentosService.obtenerContenido(req.params.id);
+
+      if (!archivo) {
+        res.status(404).json({
+          success: false,
+          error: "Documento no encontrado o archivo no disponible",
+        });
+        return;
+      }
+
+      await auditService.logCRUD("documento", "visualizar", req.user!.funcionarioId, req.params.id, {
+        nombre: archivo.nombre,
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
+
+      // Headers para visualización inline
+      res.setHeader("Content-Type", archivo.mimeType);
+      res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(archivo.nombre)}"`);
+      res.setHeader("Content-Length", archivo.contenido.length);
+
+      res.send(archivo.contenido);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/documentos/:id/descargar
+ * Descarga el archivo PDF del documento
+ * HU-SJ-002: Acceso seguro al contenido del archivo
+ * IMPORTANTE: Esta ruta debe estar ANTES de /:id para que Express la matchee correctamente
+ */
+router.get(
+  "/:id/descargar",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  verificarPropiedadDocumento("id"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const archivo = await documentosService.obtenerContenido(req.params.id);
+
+      if (!archivo) {
+        res.status(404).json({
+          success: false,
+          error: "Documento no encontrado o archivo no disponible",
+        });
+        return;
+      }
+
+      await auditService.logCRUD("documento", "descargar", req.user!.funcionarioId, req.params.id, {
+        nombre: archivo.nombre,
+      }, getClientIp(req), getUserAgent(req), req.user!.correo);
+
+      // Headers para descarga
+      res.setHeader("Content-Type", archivo.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(archivo.nombre)}"`);
+      res.setHeader("Content-Length", archivo.contenido.length);
+
+      res.send(archivo.contenido);
     } catch (error) {
       next(error);
     }
@@ -94,7 +173,9 @@ router.get(
 
 /**
  * POST /api/documentos
- * Sube un nuevo documento
+ * Sube un nuevo documento con validaciones de seguridad
+ * HU-SJ-002: Validación de PDFs, almacenamiento seguro y auditoría
+ * SECRETARIO: Solo puede subir documentos a causas de su unidad/materia
  */
 router.post(
   "/",
@@ -104,27 +185,55 @@ router.post(
     try {
       const datos = subirDocumentoSchema.parse(req.body);
 
-      // En producción, el contenido vendría de multipart/form-data
-      // Aquí simulamos con un buffer vacío
-      const contenido = Buffer.from(req.body.contenido || "", "base64");
+      // VALIDACIÓN: Secretario solo puede subir documentos a causas de su unidad/materia
+      if (req.user!.rol === "SECRETARIO") {
+        const causa = await documentosService.verificarAccesoCausa(
+          datos.causaId,
+          req.user!.unidadJudicial,
+          req.user!.materia
+        );
 
-      const documento = await documentosService.subirDocumento(
-        {
-          causaId: datos.causaId,
-          tipo: datos.tipo,
-          nombre: datos.nombre,
-          contenido,
-          mimeType: datos.mimeType || "application/pdf",
-        },
-        req.user!.funcionarioId
-      );
+        if (!causa) {
+          // Auditar intento de subir documento a causa no autorizada
+          await auditService.log({
+            tipoEvento: "ACCESO_DENEGADO",
+            usuarioId: req.user!.funcionarioId,
+            usuarioCorreo: req.user!.correo,
+            moduloAfectado: "DOCUMENTOS",
+            descripcion: `[MEDIA] Secretario intentó subir documento a causa fuera de su unidad/materia`,
+            datosAfectados: {
+              causaId: datos.causaId,
+              tipo: datos.tipo,
+              nombreOriginal: datos.nombreOriginal,
+              unidadJudicialSecretario: req.user!.unidadJudicial,
+              materiaSecretario: req.user!.materia,
+            },
+            ipOrigen: getClientIp(req),
+            userAgent: getUserAgent(req),
+          });
 
-      await auditService.logCRUD("documento", "crear", req.user!.funcionarioId, documento.id, {
-        nombre: documento.nombre,
-        tipo: documento.tipo,
-        causaId: documento.causaId,
-        tamanio: documento.tamanioBytes,
-      }, getClientIp(req), getUserAgent(req), req.user!.correo);
+          res.status(403).json({
+            success: false,
+            error: "No tiene autorización para subir documentos a esta causa",
+            code: "FORBIDDEN_RESOURCE",
+          });
+          return;
+        }
+      }
+
+      // Decodificar contenido de Base64
+      const contenido = Buffer.from(datos.contenido, "base64");
+
+      const documento = await documentosService.subirDocumento({
+        causaId: datos.causaId,
+        tipo: datos.tipo,
+        nombreOriginal: datos.nombreOriginal,
+        contenido,
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.status(201).json({
         success: true,
@@ -140,6 +249,16 @@ router.post(
         });
         return;
       }
+      
+      // Errores de validación de archivo
+      if (error instanceof Error) {
+        res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+        return;
+      }
+      
       next(error);
     }
   }

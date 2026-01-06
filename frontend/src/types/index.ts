@@ -83,7 +83,7 @@ export interface CrearCausaRequest {
 // ============================================================================
 export type TipoDocumento = "escrito" | "providencia" | "auto" | "sentencia" | "anexo" | "notificacion";
 
-export type EstadoDocumento = "borrador" | "pendiente" | "firmado" | "notificado";
+export type EstadoDocumento = "borrador" | "pendiente" | "firmado" | "notificado" | "activo";
 
 export type FormatoDocumento = "pdf" | "docx";
 
@@ -92,12 +92,15 @@ export interface Documento {
   causaId: string;
   nombre: string;
   tipo: TipoDocumento;
-  formato: FormatoDocumento;
-  tamano: string;
+  formato?: FormatoDocumento;
+  tamano: string | number;
   fechaSubida: string;
   subidoPor: string;
+  subidoPorNombre?: string; // Pseudónimo del secretario
   hashIntegridad: string;
   estado: EstadoDocumento;
+  ruta?: string;
+  mimeType?: string;
 }
 
 export interface SubirDocumentoRequest {

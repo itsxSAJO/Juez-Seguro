@@ -110,7 +110,7 @@ export const documentosService = {
    * Descarga un documento
    */
   async descargarDocumento(id: string): Promise<Blob> {
-    const token = localStorage.getItem("authToken");
+    const token = sessionStorage.getItem("auth_token");
     const headers: HeadersInit = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -126,6 +126,32 @@ export const documentosService = {
     }
 
     return response.blob();
+  },
+
+  /**
+   * Visualiza un documento en una nueva pestaña
+   */
+  async verDocumento(id: string): Promise<void> {
+    const token = sessionStorage.getItem("auth_token");
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/documentos/${id}/ver`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error("Error al obtener el documento");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    // Limpiar URL después de un tiempo
+    setTimeout(() => window.URL.revokeObjectURL(url), 60000);
   },
 
   /**
