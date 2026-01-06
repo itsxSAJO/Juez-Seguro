@@ -9,6 +9,7 @@ import { z } from "zod";
 import { causasService } from "../services/causas.service.js";
 import { auditService } from "../services/audit.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
+import { verificarPropiedadCausa } from "../middleware/access-control.middleware.js";
 
 const router = Router();
 
@@ -67,6 +68,14 @@ router.get(
       if (req.user?.rol === "JUEZ") {
         (filtros as any).juezAsignadoId = req.user.funcionarioId;
       }
+      
+      // Si es secretario, solo ve causas de su unidad judicial y materia
+      if (req.user?.rol === "SECRETARIO") {
+        (filtros as any).unidadJudicial = req.user.unidadJudicial;
+        (filtros as any).materia = req.user.materia;
+      }
+      
+      // ADMIN_CJ ve todas las causas (sin filtro adicional)
 
       const resultado = await causasService.getCausas(filtros);
 
@@ -97,11 +106,13 @@ router.get(
 // ============================================================================
 // GET /api/causas/:id
 // Obtiene una causa por ID (vista interna)
+// HU-JZ-001: Control de acceso con verificación de propiedad (FIA_ATD.1)
 // ============================================================================
 router.get(
   "/:id",
   authenticate,
   authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  verificarPropiedadCausa("id"), // ← NUEVO: Middleware de control de acceso Sprint 2
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseInt(req.params.id);
@@ -123,14 +134,8 @@ router.get(
         return;
       }
 
-      // Verificar acceso si es juez
-      if (req.user?.rol === "JUEZ" && causa.juez_asignado_id !== req.user.funcionarioId) {
-        res.status(403).json({
-          success: false,
-          error: "No tiene acceso a esta causa",
-        });
-        return;
-      }
+      // La verificación de propiedad ya se hizo en el middleware
+      // Si llegamos aquí, el acceso está autorizado
 
       res.json({
         success: true,
@@ -145,11 +150,13 @@ router.get(
 // ============================================================================
 // GET /api/causas/:id/expediente
 // Obtiene el expediente de una causa
+// HU-JZ-001: Control de acceso con verificación de propiedad (FIA_ATD.1)
 // ============================================================================
 router.get(
   "/:id/expediente",
   authenticate,
   authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  verificarPropiedadCausa("id"), // ← NUEVO: Middleware de control de acceso Sprint 2
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseInt(req.params.id);

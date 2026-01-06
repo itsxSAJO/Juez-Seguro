@@ -7,6 +7,7 @@ import { z } from "zod";
 import { audienciasService } from "../services/audiencias.service.js";
 import { auditService } from "../services/audit.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
+import { verificarPropiedadAudiencia } from "../middleware/access-control.middleware.js";
 
 import type { EstadoAudiencia } from "../types/index.js";
 
@@ -171,11 +172,13 @@ router.post(
 /**
  * PATCH /api/audiencias/:id/estado
  * Cambia el estado de una audiencia
+ * HU-JZ-001: Control de acceso con verificación de propiedad (FIA_ATD.1)
  */
 router.patch(
   "/:id/estado",
   authenticate,
   authorize("ADMIN_CJ", "JUEZ"),
+  verificarPropiedadAudiencia("id"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { estado } = z.object({
@@ -210,11 +213,13 @@ router.patch(
 /**
  * PATCH /api/audiencias/:id/reprogramar
  * Reprograma una audiencia
+ * HU-JZ-001: Control de acceso con verificación de propiedad (FIA_ATD.1)
  */
 router.patch(
   "/:id/reprogramar",
   authenticate,
   authorize("ADMIN_CJ", "JUEZ"),
+  verificarPropiedadAudiencia("id"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const datos = reprogramarSchema.parse(req.body);

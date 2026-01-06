@@ -7,6 +7,7 @@ import { z } from "zod";
 import { documentosService } from "../services/documentos.service.js";
 import { auditService } from "../services/audit.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
+import { verificarPropiedadCausa, verificarPropiedadDocumento } from "../middleware/access-control.middleware.js";
 
 const router = Router();
 
@@ -28,11 +29,13 @@ const subirDocumentoSchema = z.object({
 /**
  * GET /api/documentos/causa/:causaId
  * Obtiene documentos de una causa
+ * HU-JZ-001: Control de acceso con verificación de propiedad (FIA_ATD.1)
  */
 router.get(
   "/causa/:causaId",
   authenticate,
   authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  verificarPropiedadCausa("causaId"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const documentos = await documentosService.getDocumentosByCausa(req.params.causaId);
@@ -55,11 +58,13 @@ router.get(
 /**
  * GET /api/documentos/:id
  * Obtiene un documento por ID
+ * HU-JZ-001: Control de acceso con verificación de propiedad (FIA_ATD.1)
  */
 router.get(
   "/:id",
   authenticate,
   authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  verificarPropiedadDocumento("id"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const documento = await documentosService.getDocumentoById(req.params.id);

@@ -95,7 +95,64 @@ services:
       start_period: 10s
 
   # ----------------------------------------------------------------
-  # 4. ADMINER - Panel de Administración (Solo Desarrollo)
+  # 4. BACKEND API - Servidor de Aplicación Node.js/TypeScript
+  # Maneja la lógica de negocio y el almacenamiento seguro de documentos
+  # ----------------------------------------------------------------
+  backend_api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: juez_seguro_backend_api
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      # Conexiones a las bases de datos
+      DB_USERS_HOST: db_usuarios
+      DB_USERS_PORT: 5432
+      DB_USERS_NAME: db_usuarios
+      DB_USERS_USER: admin_users
+      DB_USERS_PASSWORD: ${DB_PASS_USERS}
+      
+      DB_CASES_HOST: db_casos
+      DB_CASES_PORT: 5432
+      DB_CASES_NAME: db_casos
+      DB_CASES_USER: admin_cases
+      DB_CASES_PASSWORD: ${DB_PASS_CASES}
+      
+      DB_LOGS_HOST: db_logs
+      DB_LOGS_PORT: 5432
+      DB_LOGS_NAME: db_logs
+      DB_LOGS_USER: admin_logs
+      DB_LOGS_PASSWORD: ${DB_PASS_LOGS}
+      
+      # Configuración JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-8h}
+      
+      # Ruta de almacenamiento seguro para documentos
+      SECURE_STORAGE_PATH: /app/storage/expedientes_seguros
+    volumes:
+      - secure_docs_storage:/app/storage/expedientes_seguros
+    networks:
+      - backend_secure_net
+    depends_on:
+      db_usuarios:
+        condition: service_healthy
+      db_casos:
+        condition: service_healthy
+      db_logs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ----------------------------------------------------------------
+  # 5. ADMINER - Panel de Administración (Solo Desarrollo)
   # Interfaz web para gestionar las bases de datos durante desarrollo
   # ----------------------------------------------------------------
   adminer:
@@ -136,3 +193,8 @@ volumes:
     name: juez_seguro_cases_data
   pg_data_logs:
     name: juez_seguro_logs_data
+  secure_docs_storage:
+    name: juez_seguro_secure_docs
+    # Volumen persistente para almacenamiento WORM (Write Once Read Many)
+    # Contiene PDFs y documentos del expediente electrónico
+    # La integridad se garantiza mediante hashes en db_casos
