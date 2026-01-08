@@ -5,10 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { getCausaById, getDocumentos, getAudiencias, Causa, Documento, Audiencia } from "@/lib/funcionarios-data";
+import { getCausaById, getDocumentos, Causa, Documento } from "@/lib/funcionarios-data";
+import { audienciasService, AudienciaConHistorial } from "@/services/audiencias.service";
+import { causasService, HistorialReprogramacion } from "@/services/causas.service";
 import {
   ArrowLeft,
   FileText,
@@ -26,13 +30,16 @@ import {
   XCircle,
   FileSignature,
   Bell,
+  Upload,
+  Plus,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
 interface Actuacion {
   id: string;
-  tipo: "escrito" | "providencia" | "auto" | "sentencia" | "audiencia" | "notificacion";
+  tipo: "escrito" | "providencia" | "auto" | "sentencia" | "audiencia" | "notificacion" | "reprogramacion";
   titulo: string;
   fecha: string;
   descripcion: string;
@@ -46,10 +53,17 @@ const ExpedienteCausa = () => {
   const { user } = useAuth();
   const [causa, setCausa] = useState<Causa | null>(null);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
-  const [audiencias, setAudiencias] = useState<Audiencia[]>([]);
+  const [audiencias, setAudiencias] = useState<AudienciaConHistorial[]>([]);
+  const [historialReprogramaciones, setHistorialReprogramaciones] = useState<HistorialReprogramacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchActuacion, setSearchActuacion] = useState("");
   const [filtroTipoActuacion, setFiltroTipoActuacion] = useState<string>("todos");
+  
+  // Estado para el diálogo de subir documento
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [tipoDocumento, setTipoDocumento] = useState<string>("");
 
   useEffect(() => {
     const loadData = async () => {
@@ -61,10 +75,11 @@ const ExpedienteCausa = () => {
       setLoading(true);
       try {
         // Cargar datos en paralelo con manejo de errores individual
-        const [causaResult, docsResult, audResult] = await Promise.allSettled([
+        const [causaResult, docsResult, audResult, historialResult] = await Promise.allSettled([
           getCausaById(id),
           getDocumentos(id),
-          getAudiencias(),
+          audienciasService.getAudiencias({ causaId: id }),
+          causasService.getHistorialReprogramaciones(id),
         ]);
         
         // Procesar resultado de causa
@@ -84,10 +99,19 @@ const ExpedienteCausa = () => {
         
         // Procesar resultado de audiencias
         if (audResult.status === 'fulfilled' && audResult.value) {
-          setAudiencias(audResult.value.filter((a) => a.causaId === id).slice(0, 5));
+          // El servicio ya filtra por causaId, solo tomamos los datos
+          setAudiencias(audResult.value.data || []);
         } else {
           console.warn("No se pudieron cargar audiencias:", audResult.status === 'rejected' ? audResult.reason : 'No data');
           setAudiencias([]);
+        }
+
+        // Procesar resultado de historial de reprogramaciones
+        if (historialResult.status === 'fulfilled' && historialResult.value) {
+          setHistorialReprogramaciones(historialResult.value);
+        } else {
+          console.warn("No se pudieron cargar reprogramaciones:", historialResult.status === 'rejected' ? historialResult.reason : 'No data');
+          setHistorialReprogramaciones([]);
         }
       } catch (error) {
         console.error("Error general cargando datos:", error);
@@ -99,25 +123,48 @@ const ExpedienteCausa = () => {
     loadData();
   }, [id]);
 
-  // Generate timeline actuaciones from documents and audiencias
+  // Generate timeline actuaciones from documents, audiencias, and reprogramaciones
+  // Ordenamos por fecha de creación/modificación del registro, no por fecha del evento
   const actuaciones: Actuacion[] = [
     ...documentos.map((doc) => ({
       id: doc.id,
       tipo: doc.tipo as Actuacion["tipo"],
       titulo: doc.nombre,
-      fecha: doc.fechaSubida,
+      fecha: doc.fechaSubida, // Fecha de subida del documento
       descripcion: `Documento ${doc.tipo} subido al expediente`,
       autor: doc.subidoPor,
       documentoId: doc.id,
     })),
-    ...audiencias.map((aud) => ({
-      id: aud.id,
-      tipo: "audiencia" as const,
-      titulo: `Audiencia de ${aud.tipo}`,
-      fecha: `${aud.fecha}T${aud.hora}`,
-      descripcion: `${aud.tipo.charAt(0).toUpperCase() + aud.tipo.slice(1)} - ${aud.sala}`,
-      autor: "Sistema",
-    })),
+    ...audiencias.map((aud) => {
+      // Para la línea del tiempo, usamos fecha de creación (cuándo se programó)
+      // No la fecha programada de la audiencia
+      const fechaCreacion = aud.fechaCreacion || aud.fecha_creacion || new Date().toISOString();
+      const fechaProgramada = aud.fechaHora || aud.fecha_hora || aud.fecha || new Date().toISOString();
+      const tipoCapitalizado = aud.tipo ? aud.tipo.charAt(0).toUpperCase() + aud.tipo.slice(1) : 'Audiencia';
+      const fechaFormateada = format(new Date(fechaProgramada), "dd/MM/yyyy HH:mm", { locale: es });
+      return {
+        id: aud.id,
+        tipo: "audiencia" as const,
+        titulo: `Audiencia de ${tipoCapitalizado} programada`,
+        fecha: fechaCreacion, // Usamos fecha de creación para el ordenamiento
+        descripcion: `Programada para ${fechaFormateada} - ${aud.sala || 'Sin sala asignada'}${aud.modalidad ? ` (${aud.modalidad})` : ''}`,
+        autor: "Sistema",
+      };
+    }),
+    // HU-SJ-003: Agregar reprogramaciones a la línea del tiempo
+    ...historialReprogramaciones.map((rep) => {
+      const tipoAudiencia = rep.tipoAudiencia ? rep.tipoAudiencia.charAt(0).toUpperCase() + rep.tipoAudiencia.slice(1).toLowerCase() : 'Audiencia';
+      const fechaAnterior = rep.fechaHoraAnterior ? format(new Date(rep.fechaHoraAnterior), "dd/MM/yyyy HH:mm", { locale: es }) : '';
+      const fechaNueva = rep.fechaHoraNueva ? format(new Date(rep.fechaHoraNueva), "dd/MM/yyyy HH:mm", { locale: es }) : '';
+      return {
+        id: `rep-${rep.historialId}`,
+        tipo: "reprogramacion" as const,
+        titulo: `🔄 Audiencia de ${tipoAudiencia} reprogramada`,
+        fecha: rep.fechaModificacion, // Fecha de cuando se reprogramó
+        descripcion: `De: ${fechaAnterior} → A: ${fechaNueva}. Motivo: ${rep.motivoReprogramacion?.split('\n')[0] || 'Sin motivo especificado'}`,
+        autor: "Secretario",
+      };
+    }),
   ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
   const filteredActuaciones = actuaciones.filter((act) => {
@@ -127,6 +174,171 @@ const ExpedienteCausa = () => {
     const matchesTipo = filtroTipoActuacion === "todos" || act.tipo === filtroTipoActuacion;
     return matchesSearch && matchesTipo;
   });
+
+  // Función para manejar la subida de documentos
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validar que sea PDF
+      if (file.type !== "application/pdf") {
+        alert("Solo se permiten archivos PDF");
+        return;
+      }
+      // Validar tamaño (50MB)
+      if (file.size > 50 * 1024 * 1024) {
+        alert("El archivo no debe exceder 50MB");
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedFile || !tipoDocumento || !id) {
+      alert("Por favor complete todos los campos");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // Convertir archivo a Base64
+      const reader = new FileReader();
+      reader.readAsDataURL(selectedFile);
+      
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result?.toString().split(",")[1];
+          if (!base64) {
+            throw new Error("Error al leer el archivo");
+          }
+
+          // Obtener token del contexto o sessionStorage
+          const authToken = user ? sessionStorage.getItem("auth_token") : null;
+          
+          if (!authToken) {
+            throw new Error("No hay sesión activa. Por favor inicie sesión nuevamente.");
+          }
+
+          const payload = {
+            causaId: id,
+            tipo: tipoDocumento,
+            nombreOriginal: selectedFile.name,
+            contenido: base64,
+          };
+
+          console.log("📤 Enviando documento:", {
+            causaId: payload.causaId,
+            tipo: payload.tipo,
+            nombreOriginal: payload.nombreOriginal,
+            contenidoLength: payload.contenido.length,
+          });
+
+          // Enviar al backend
+          const response = await fetch("http://localhost:3000/api/documentos", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            console.error("❌ Error del servidor:", error);
+            throw new Error(error.error || error.details?.[0]?.message || "Error al subir el documento");
+          }
+
+          const result = await response.json();
+          console.log("✅ Documento subido:", result);
+          
+          // Actualizar lista de documentos
+          const updatedDocs = await getDocumentos(id);
+          setDocumentos(updatedDocs);
+
+          // Cerrar diálogo y limpiar
+          setDialogOpen(false);
+          setSelectedFile(null);
+          setTipoDocumento("");
+          
+          alert("Documento subido exitosamente");
+        } catch (error) {
+          console.error("Error uploading document:", error);
+          alert(error instanceof Error ? error.message : "Error al subir el documento");
+          setUploading(false);
+        }
+      };
+
+      reader.onerror = () => {
+        alert("Error al leer el archivo");
+        setUploading(false);
+      };
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      alert(error instanceof Error ? error.message : "Error al subir el documento");
+      setUploading(false);
+    }
+  };
+
+  // Función para ver un documento en una nueva pestaña
+  const handleVerDocumento = async (docId: string) => {
+    try {
+      const token = sessionStorage.getItem("auth_token");
+      const response = await fetch(`http://localhost:3000/api/documentos/${docId}/ver`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Error al obtener el documento");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      // Limpiar URL después de un tiempo
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      console.error("Error al ver documento:", error);
+      alert("No se pudo abrir el documento");
+    }
+  };
+
+  // Función para descargar un documento
+  const handleDescargarDocumento = async (docId: string, nombreArchivo: string) => {
+    try {
+      const token = sessionStorage.getItem("auth_token");
+      const response = await fetch(`http://localhost:3000/api/documentos/${docId}/descargar`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Error al descargar el documento");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Crear enlace temporal para descargar
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = nombreArchivo;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // Limpiar URL
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error al descargar documento:", error);
+      alert("No se pudo descargar el documento");
+    }
+  };
 
   const getActuacionIcon = (tipo: Actuacion["tipo"]) => {
     switch (tipo) {
@@ -142,6 +354,8 @@ const ExpedienteCausa = () => {
         return <Calendar className="w-4 h-4" />;
       case "notificacion":
         return <Bell className="w-4 h-4" />;
+      case "reprogramacion":
+        return <RefreshCw className="w-4 h-4" />;
       default:
         return <FileText className="w-4 h-4" />;
     }
@@ -161,6 +375,8 @@ const ExpedienteCausa = () => {
         return "bg-warning/20 text-warning border-warning/30";
       case "notificacion":
         return "bg-secondary/20 text-secondary-foreground border-secondary/30";
+      case "reprogramacion":
+        return "bg-orange-500/20 text-orange-600 border-orange-500/30";
       default:
         return "bg-muted text-muted-foreground";
     }
@@ -364,6 +580,7 @@ const ExpedienteCausa = () => {
                   <SelectItem value="auto">Autos</SelectItem>
                   <SelectItem value="sentencia">Sentencias</SelectItem>
                   <SelectItem value="audiencia">Audiencias</SelectItem>
+                  <SelectItem value="reprogramacion">Reprogramaciones</SelectItem>
                   <SelectItem value="notificacion">Notificaciones</SelectItem>
                 </SelectContent>
               </Select>
@@ -405,7 +622,11 @@ const ExpedienteCausa = () => {
                               <p className="text-xs text-muted-foreground mt-1">Por: {act.autor}</p>
                             </div>
                             {act.documentoId && (
-                              <Button variant="outline" size="sm">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleVerDocumento(act.documentoId!)}
+                              >
                                 <Eye className="w-4 h-4 mr-1" />
                                 Ver
                               </Button>
@@ -422,6 +643,100 @@ const ExpedienteCausa = () => {
 
           <TabsContent value="documentos" className="mt-4">
             <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Documentos del Expediente</CardTitle>
+                {user?.rol === "SECRETARIO" && (
+                  <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Subir Documento
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[500px]">
+                      <DialogHeader>
+                        <DialogTitle>Subir Documento al Expediente</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="tipo">Tipo de Documento *</Label>
+                          <Select value={tipoDocumento} onValueChange={setTipoDocumento}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccione el tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="demanda">Demanda</SelectItem>
+                              <SelectItem value="contestacion">Contestación</SelectItem>
+                              <SelectItem value="prueba">Prueba</SelectItem>
+                              <SelectItem value="sentencia">Sentencia</SelectItem>
+                              <SelectItem value="auto">Auto</SelectItem>
+                              <SelectItem value="providencia">Providencia</SelectItem>
+                              <SelectItem value="otro">Otro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="file">Archivo PDF *</Label>
+                          <Input
+                            id="file"
+                            type="file"
+                            accept=".pdf"
+                            onChange={handleFileChange}
+                            disabled={uploading}
+                          />
+                          {selectedFile && (
+                            <p className="text-sm text-muted-foreground">
+                              Archivo seleccionado: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="bg-info/10 border border-info/20 rounded-lg p-3">
+                          <p className="text-sm text-info">
+                            <strong>Validaciones de seguridad:</strong>
+                          </p>
+                          <ul className="text-sm text-info/80 mt-1 space-y-1 list-disc list-inside">
+                            <li>Solo archivos PDF permitidos</li>
+                            <li>Tamaño máximo: 50MB</li>
+                            <li>Verificación de integridad con SHA-256</li>
+                          </ul>
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setDialogOpen(false);
+                              setSelectedFile(null);
+                              setTipoDocumento("");
+                            }}
+                            disabled={uploading}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            onClick={handleUploadDocument}
+                            disabled={uploading || !selectedFile || !tipoDocumento}
+                          >
+                            {uploading ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                                Subiendo...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-4 h-4 mr-2" />
+                                Subir
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </CardHeader>
               <CardContent className="p-0">
                 {documentos.length === 0 ? (
                   <div className="py-12 text-center">
@@ -465,7 +780,7 @@ const ExpedienteCausa = () => {
                             <td className="p-4">
                               <div className="flex items-center gap-2">
                                 <User className="w-3 h-3 text-muted-foreground" />
-                                <span className="text-sm">{doc.subidoPor || "Secretario"}</span>
+                                <span className="text-sm">{doc.subidoPorNombre || doc.subidoPor || "Secretario"}</span>
                               </div>
                             </td>
                             <td className="p-4 text-sm text-muted-foreground">
@@ -487,10 +802,20 @@ const ExpedienteCausa = () => {
                             </td>
                             <td className="p-4">
                               <div className="flex items-center gap-2">
-                                <Button variant="ghost" size="icon" title="Ver documento">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  title="Ver documento"
+                                  onClick={() => handleVerDocumento(doc.id)}
+                                >
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" title="Descargar">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  title="Descargar"
+                                  onClick={() => handleDescargarDocumento(doc.id, doc.nombre)}
+                                >
                                   <Download className="w-4 h-4" />
                                 </Button>
                               </div>

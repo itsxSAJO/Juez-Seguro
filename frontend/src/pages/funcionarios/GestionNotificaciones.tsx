@@ -1,174 +1,255 @@
-import { useState, useMemo } from "react";
+// ============================================================================
+// JUEZ SEGURO - Gestión de Notificaciones Internas
+// Consumo de notificaciones reales del backend (sin mocks)
+// ============================================================================
+
+import { useState, useEffect, useMemo } from "react";
 import { FuncionariosLayout } from "@/components/funcionarios/FuncionariosLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { notificacionesService, NotificacionInterna } from "@/services/notificaciones.service";
 import {
   Bell,
-  Plus,
   Calendar as CalendarIcon,
-  Clock,
   AlertTriangle,
   CheckCircle2,
-  XCircle,
-  Mail,
-  FileText,
-  Building,
   Search,
-  Filter,
+  RefreshCw,
+  Loader2,
+  FileText,
+  Gavel,
+  Clock,
+  Archive,
+  CheckCheck,
 } from "lucide-react";
-import { format, differenceInDays, isPast } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { getNotificaciones, getCausas, Notificacion } from "@/lib/funcionarios-data";
 
 const GestionNotificaciones = () => {
   const { toast } = useToast();
-  const [notificaciones] = useState<Notificacion[]>(generateMockNotificaciones(25));
-  const [causas] = useState(generateMockCausas(10));
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const { user } = useAuth();
+  
+  // Estado de datos - consumidos del backend
+  const [notificaciones, setNotificaciones] = useState<NotificacionInterna[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [noLeidas, setNoLeidas] = useState(0);
+  
+  // Filtros
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterEstado, setFilterEstado] = useState<string>("todos");
-  const [filterMedio, setFilterMedio] = useState<string>("todos");
+  const [filterEstado, setFilterEstado] = useState<string>("todas");
+  const [filterTipo, setFilterTipo] = useState<string>("todos");
+  
+  // Modal de detalle
+  const [selectedNotificacion, setSelectedNotificacion] = useState<NotificacionInterna | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
-  // Form state
-  const [selectedCausa, setSelectedCausa] = useState("");
-  const [tipoNotificacion, setTipoNotificacion] = useState("");
-  const [destinatario, setDestinatario] = useState("");
-  const [medio, setMedio] = useState("");
-  const [fechaEnvio, setFechaEnvio] = useState<Date>();
-
-  // Calculate stats
-  const stats = useMemo(() => {
-    const hoy = new Date();
-    const pendientes = notificaciones.filter((n) => n.estado === "pendiente").length;
-    const enviadas = notificaciones.filter((n) => n.estado === "enviada").length;
-    const vencidas = notificaciones.filter((n) => n.estado === "vencida" || isPast(new Date(n.fechaLimite))).length;
-    const proximasVencer = notificaciones.filter((n) => {
-      const diasRestantes = differenceInDays(new Date(n.fechaLimite), hoy);
-      return diasRestantes >= 0 && diasRestantes <= 3 && n.estado !== "vencida";
-    }).length;
-    return { pendientes, enviadas, vencidas, proximasVencer };
-  }, [notificaciones]);
-
-  const getEstadoBadge = (notif: Notificacion) => {
-    const diasRestantes = differenceInDays(new Date(notif.fechaLimite), new Date());
-    
-    if (notif.estado === "vencida" || (isPast(new Date(notif.fechaLimite)) && notif.estado !== "recibida")) {
-      return (
-        <Badge variant="destructive" className="flex items-center gap-1">
-          <XCircle className="w-3 h-3" />
-          Vencida
-        </Badge>
-      );
-    }
-    if (notif.estado === "recibida") {
-      return (
-        <Badge className="bg-success text-success-foreground flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" />
-          Recibida
-        </Badge>
-      );
-    }
-    if (diasRestantes <= 3 && diasRestantes >= 0) {
-      return (
-        <Badge className="bg-warning text-warning-foreground flex items-center gap-1">
-          <AlertTriangle className="w-3 h-3" />
-          Por vencer ({diasRestantes}d)
-        </Badge>
-      );
-    }
-    if (notif.estado === "enviada") {
-      return (
-        <Badge className="bg-info text-info-foreground">
-          Enviada
-        </Badge>
-      );
-    }
-    return <Badge variant="secondary">Pendiente</Badge>;
-  };
-
-  const getMedioBadge = (medio: Notificacion["medio"]) => {
-    switch (medio) {
-      case "electronico":
-        return (
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Mail className="w-3 h-3" />
-            Electrónico
-          </Badge>
-        );
-      case "fisico":
-        return (
-          <Badge variant="outline" className="flex items-center gap-1">
-            <FileText className="w-3 h-3" />
-            Físico
-          </Badge>
-        );
-      case "judicial":
-        return (
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Building className="w-3 h-3" />
-            Judicial
-          </Badge>
-        );
-    }
-  };
-
-  const getTipoBadge = (tipo: Notificacion["tipo"]) => {
-    switch (tipo) {
-      case "citacion":
-        return <Badge className="bg-primary/20 text-primary">Citación</Badge>;
-      case "notificacion":
-        return <Badge className="bg-info/20 text-info">Notificación</Badge>;
-      case "emplazamiento":
-        return <Badge className="bg-warning/20 text-warning">Emplazamiento</Badge>;
-      case "recordatorio":
-        return <Badge className="bg-secondary">Recordatorio</Badge>;
-    }
-  };
-
-  const handleCrearNotificacion = () => {
-    if (!selectedCausa || !tipoNotificacion || !destinatario || !medio || !fechaEnvio) {
+  // Cargar notificaciones del backend
+  const cargarNotificaciones = async () => {
+    try {
+      const resultado = await notificacionesService.getMisNotificaciones({
+        estado: filterEstado === "todas" ? undefined : filterEstado as any,
+        tipo: filterTipo === "todos" ? undefined : filterTipo,
+      });
+      
+      setNotificaciones(resultado.notificaciones);
+      setTotal(resultado.total);
+      setNoLeidas(resultado.noLeidas);
+    } catch (error) {
+      console.error("Error al cargar notificaciones:", error);
       toast({
-        title: "Campos requeridos",
-        description: "Por favor complete todos los campos.",
+        title: "Error",
+        description: "No se pudieron cargar las notificaciones",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    toast({
-      title: "Notificación registrada",
-      description: `La ${tipoNotificacion} ha sido registrada para envío.`,
-    });
-
-    setCreateModalOpen(false);
-    setSelectedCausa("");
-    setTipoNotificacion("");
-    setDestinatario("");
-    setMedio("");
-    setFechaEnvio(undefined);
   };
 
+  useEffect(() => {
+    cargarNotificaciones();
+  }, [filterEstado, filterTipo]);
+
+  const refrescarDatos = async () => {
+    setRefreshing(true);
+    await cargarNotificaciones();
+    setRefreshing(false);
+    toast({
+      title: "Actualizado",
+      description: "Notificaciones actualizadas",
+    });
+  };
+
+  // Marcar como leída
+  const handleMarcarLeida = async (notif: NotificacionInterna) => {
+    if (notif.estado === "leida") return;
+    
+    try {
+      await notificacionesService.marcarLeida(notif.id);
+      await cargarNotificaciones();
+      toast({
+        title: "Notificación leída",
+        description: "La notificación ha sido marcada como leída",
+      });
+    } catch (error) {
+      console.error("Error al marcar como leída:", error);
+    }
+  };
+
+  // Marcar todas como leídas
+  const handleMarcarTodasLeidas = async () => {
+    try {
+      const cantidad = await notificacionesService.marcarTodasLeidas();
+      await cargarNotificaciones();
+      toast({
+        title: "Notificaciones actualizadas",
+        description: `${cantidad} notificación(es) marcada(s) como leída(s)`,
+      });
+    } catch (error) {
+      console.error("Error al marcar todas como leídas:", error);
+    }
+  };
+
+  // Archivar notificación
+  const handleArchivar = async (notif: NotificacionInterna) => {
+    try {
+      await notificacionesService.archivar(notif.id);
+      await cargarNotificaciones();
+      setDetailModalOpen(false);
+      toast({
+        title: "Notificación archivada",
+        description: "La notificación ha sido archivada",
+      });
+    } catch (error) {
+      console.error("Error al archivar:", error);
+    }
+  };
+
+  // Abrir detalle
+  const openDetail = async (notif: NotificacionInterna) => {
+    setSelectedNotificacion(notif);
+    setDetailModalOpen(true);
+    
+    // Marcar como leída automáticamente al abrir
+    if (notif.estado === "no_leida") {
+      await handleMarcarLeida(notif);
+    }
+  };
+
+  // Stats calculadas
+  const stats = useMemo(() => {
+    const causasAsignadas = notificaciones.filter((n) => n.tipo === "causa_asignada").length;
+    const audienciasProgramadas = notificaciones.filter((n) => n.tipo === "audiencia_programada").length;
+    const audienciasReprogramadas = notificaciones.filter((n) => n.tipo === "audiencia_reprogramada").length;
+    
+    return { causasAsignadas, audienciasProgramadas, audienciasReprogramadas };
+  }, [notificaciones]);
+
+  // Filtrar por búsqueda
   const filteredNotificaciones = notificaciones.filter((notif) => {
-    const matchesSearch = notif.destinatario.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesEstado = filterEstado === "todos" || notif.estado === filterEstado;
-    const matchesMedio = filterMedio === "todos" || notif.medio === filterMedio;
-    return matchesSearch && matchesEstado && matchesMedio;
+    const matchesSearch = 
+      notif.titulo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      notif.mensaje.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (notif.numeroProceso && notif.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesSearch;
   });
 
-  // Sort by urgency (vencidas first, then por vencer, then rest)
-  const sortedNotificaciones = [...filteredNotificaciones].sort((a, b) => {
-    const diasA = differenceInDays(new Date(a.fechaLimite), new Date());
-    const diasB = differenceInDays(new Date(b.fechaLimite), new Date());
-    return diasA - diasB;
-  });
+  // Badges de tipo
+  const getTipoBadge = (tipo: NotificacionInterna["tipo"]) => {
+    switch (tipo) {
+      case "causa_asignada":
+        return (
+          <Badge className="bg-primary/20 text-primary flex items-center gap-1">
+            <Gavel className="w-3 h-3" />
+            Causa Asignada
+          </Badge>
+        );
+      case "audiencia_programada":
+        return (
+          <Badge className="bg-info/20 text-info flex items-center gap-1">
+            <CalendarIcon className="w-3 h-3" />
+            Audiencia Programada
+          </Badge>
+        );
+      case "audiencia_reprogramada":
+        return (
+          <Badge className="bg-warning/20 text-warning flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" />
+            Audiencia Reprogramada
+          </Badge>
+        );
+      case "documento_agregado":
+        return (
+          <Badge className="bg-secondary flex items-center gap-1">
+            <FileText className="w-3 h-3" />
+            Documento
+          </Badge>
+        );
+      default:
+        return <Badge variant="outline">{tipo}</Badge>;
+    }
+  };
+
+  // Badge de prioridad
+  const getPrioridadBadge = (prioridad: NotificacionInterna["prioridad"]) => {
+    switch (prioridad) {
+      case "urgente":
+        return <Badge variant="destructive">Urgente</Badge>;
+      case "alta":
+        return <Badge className="bg-warning text-warning-foreground">Alta</Badge>;
+      case "normal":
+        return <Badge variant="secondary">Normal</Badge>;
+      case "baja":
+        return <Badge variant="outline">Baja</Badge>;
+    }
+  };
+
+  // Badge de estado
+  const getEstadoBadge = (estado: NotificacionInterna["estado"]) => {
+    switch (estado) {
+      case "no_leida":
+        return (
+          <Badge className="bg-info text-info-foreground flex items-center gap-1">
+            <Bell className="w-3 h-3" />
+            No leída
+          </Badge>
+        );
+      case "leida":
+        return (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            Leída
+          </Badge>
+        );
+      case "archivada":
+        return (
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Archive className="w-3 h-3" />
+            Archivada
+          </Badge>
+        );
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <FuncionariosLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <span className="ml-2">Cargando notificaciones...</span>
+        </div>
+      </FuncionariosLayout>
+    );
+  }
 
   return (
     <FuncionariosLayout>
@@ -176,187 +257,91 @@ const GestionNotificaciones = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-heading font-bold">Notificaciones y Plazos</h1>
-            <p className="text-muted-foreground">Gestión de notificaciones y control de plazos procesales</p>
+            <h1 className="text-2xl font-heading font-bold">Mis Notificaciones</h1>
+            <p className="text-muted-foreground">
+              Centro de notificaciones del sistema - Causas asignadas, audiencias y más
+            </p>
           </div>
-          <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Nueva Notificación
+          <div className="flex gap-2">
+            {noLeidas > 0 && (
+              <Button variant="outline" onClick={handleMarcarTodasLeidas}>
+                <CheckCheck className="w-4 h-4 mr-2" />
+                Marcar todas como leídas
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Registrar Notificación</DialogTitle>
-              </DialogHeader>
-
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Causa / Expediente *</Label>
-                  <Select value={selectedCausa} onValueChange={setSelectedCausa}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar causa..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {causas.slice(0, 10).map((causa) => (
-                        <SelectItem key={causa.id} value={causa.id}>
-                          {causa.numeroExpediente}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Tipo *</Label>
-                  <Select value={tipoNotificacion} onValueChange={setTipoNotificacion}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar tipo..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="citacion">Citación</SelectItem>
-                      <SelectItem value="notificacion">Notificación</SelectItem>
-                      <SelectItem value="emplazamiento">Emplazamiento</SelectItem>
-                      <SelectItem value="recordatorio">Recordatorio</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Destinatario *</Label>
-                  <Input
-                    placeholder="Nombre del destinatario"
-                    value={destinatario}
-                    onChange={(e) => setDestinatario(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Medio de Notificación *</Label>
-                  <Select value={medio} onValueChange={setMedio}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar medio..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="electronico">
-                        <span className="flex items-center gap-2">
-                          <Mail className="w-4 h-4" /> Electrónico
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="fisico">
-                        <span className="flex items-center gap-2">
-                          <FileText className="w-4 h-4" /> Físico
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="judicial">
-                        <span className="flex items-center gap-2">
-                          <Building className="w-4 h-4" /> Judicial
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Fecha de Envío *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {fechaEnvio ? format(fechaEnvio, "dd/MM/yyyy") : "Seleccionar fecha..."}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={fechaEnvio}
-                        onSelect={setFechaEnvio}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleCrearNotificacion}>
-                  Registrar Notificación
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            )}
+            <Button variant="outline" onClick={refrescarDatos} disabled={refreshing}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+              Actualizar
+            </Button>
+          </div>
         </div>
 
-        {/* Stats - Tablero de Plazos */}
+        {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-secondary">
-                  <Clock className="w-5 h-5 text-secondary-foreground" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">{stats.pendientes}</div>
-                  <p className="text-sm text-muted-foreground">Pendientes</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
+          <Card className={noLeidas > 0 ? "border-info" : ""}>
             <CardContent className="pt-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-info/20">
                   <Bell className="w-5 h-5 text-info" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-info">{stats.enviadas}</div>
-                  <p className="text-sm text-muted-foreground">Enviadas</p>
+                  <div className="text-2xl font-bold text-info">{noLeidas}</div>
+                  <p className="text-sm text-muted-foreground">No Leídas</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className={stats.proximasVencer > 0 ? "border-warning" : ""}>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/20">
+                  <Gavel className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{stats.causasAsignadas}</div>
+                  <p className="text-sm text-muted-foreground">Causas Asignadas</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-secondary">
+                  <CalendarIcon className="w-5 h-5 text-secondary-foreground" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{stats.audienciasProgramadas}</div>
+                  <p className="text-sm text-muted-foreground">Audiencias Programadas</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className={stats.audienciasReprogramadas > 0 ? "border-warning" : ""}>
             <CardContent className="pt-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-warning/20">
                   <AlertTriangle className="w-5 h-5 text-warning" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-warning">{stats.proximasVencer}</div>
-                  <p className="text-sm text-muted-foreground">Por Vencer</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={stats.vencidas > 0 ? "border-destructive" : ""}>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-destructive/20">
-                  <XCircle className="w-5 h-5 text-destructive" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-destructive">{stats.vencidas}</div>
-                  <p className="text-sm text-muted-foreground">Vencidas</p>
+                  <div className="text-2xl font-bold text-warning">{stats.audienciasReprogramadas}</div>
+                  <p className="text-sm text-muted-foreground">Reprogramaciones</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Alertas urgentes */}
-        {(stats.vencidas > 0 || stats.proximasVencer > 0) && (
-          <Card className="border-warning/50 bg-warning/5">
+        {/* Alerta de no leídas */}
+        {noLeidas > 0 && (
+          <Card className="border-info/50 bg-info/5">
             <CardContent className="py-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="w-6 h-6 text-warning shrink-0" />
+                <Bell className="w-6 h-6 text-info shrink-0" />
                 <div>
-                  <p className="font-semibold text-warning">Atención: Plazos Críticos</p>
+                  <p className="font-semibold text-info">Tienes {noLeidas} notificación(es) sin leer</p>
                   <p className="text-sm text-muted-foreground">
-                    {stats.vencidas > 0 && `${stats.vencidas} notificación(es) vencida(s). `}
-                    {stats.proximasVencer > 0 && `${stats.proximasVencer} notificación(es) próxima(s) a vencer.`}
+                    Revisa las notificaciones para estar al día con tus causas y audiencias.
                   </p>
                 </div>
               </div>
@@ -369,7 +354,7 @@ const GestionNotificaciones = () => {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por destinatario..."
+              placeholder="Buscar por título, mensaje o número de proceso..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -380,68 +365,174 @@ const GestionNotificaciones = () => {
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="pendiente">Pendiente</SelectItem>
-              <SelectItem value="enviada">Enviada</SelectItem>
-              <SelectItem value="recibida">Recibida</SelectItem>
-              <SelectItem value="vencida">Vencida</SelectItem>
+              <SelectItem value="todas">Todas</SelectItem>
+              <SelectItem value="no_leida">No leídas</SelectItem>
+              <SelectItem value="leida">Leídas</SelectItem>
+              <SelectItem value="archivada">Archivadas</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={filterMedio} onValueChange={setFilterMedio}>
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue placeholder="Medio" />
+          <Select value={filterTipo} onValueChange={setFilterTipo}>
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="Tipo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="electronico">Electrónico</SelectItem>
-              <SelectItem value="fisico">Físico</SelectItem>
-              <SelectItem value="judicial">Judicial</SelectItem>
+              <SelectItem value="todos">Todos los tipos</SelectItem>
+              <SelectItem value="causa_asignada">Causas asignadas</SelectItem>
+              <SelectItem value="audiencia_programada">Audiencias programadas</SelectItem>
+              <SelectItem value="audiencia_reprogramada">Reprogramaciones</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Notificaciones Table */}
+        {/* Lista de Notificaciones */}
         <Card>
           <CardHeader>
-            <CardTitle>Lista de Notificaciones</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              Notificaciones ({filteredNotificaciones.length})
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-4 font-medium">Tipo</th>
-                    <th className="text-left p-4 font-medium">Destinatario</th>
-                    <th className="text-left p-4 font-medium">Medio</th>
-                    <th className="text-left p-4 font-medium">Fecha Envío</th>
-                    <th className="text-left p-4 font-medium">Fecha Límite</th>
-                    <th className="text-left p-4 font-medium">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedNotificaciones.map((notif) => (
-                    <tr key={notif.id} className="border-b hover:bg-muted/30">
-                      <td className="p-4">{getTipoBadge(notif.tipo)}</td>
-                      <td className="p-4 font-medium">{notif.destinatario}</td>
-                      <td className="p-4">{getMedioBadge(notif.medio)}</td>
-                      <td className="p-4 text-sm">
-                        {format(new Date(notif.fechaEnvio), "dd/MM/yyyy", { locale: es })}
-                      </td>
-                      <td className="p-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-                          {format(new Date(notif.fechaLimite), "dd/MM/yyyy", { locale: es })}
+            {filteredNotificaciones.length === 0 ? (
+              <div className="text-center py-12">
+                <Bell className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No hay notificaciones que mostrar</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {filteredNotificaciones.map((notif) => (
+                  <div
+                    key={notif.id}
+                    className={`p-4 hover:bg-muted/30 cursor-pointer transition-colors ${
+                      notif.estado === "no_leida" ? "bg-info/5 border-l-4 border-l-info" : ""
+                    }`}
+                    onClick={() => openDetail(notif)}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          {getTipoBadge(notif.tipo)}
+                          {getPrioridadBadge(notif.prioridad)}
+                          {notif.estado === "no_leida" && (
+                            <span className="w-2 h-2 rounded-full bg-info animate-pulse" />
+                          )}
                         </div>
-                      </td>
-                      <td className="p-4">{getEstadoBadge(notif)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        <h3 className={`font-medium ${notif.estado === "no_leida" ? "font-semibold" : ""}`}>
+                          {notif.titulo}
+                        </h3>
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                          {notif.mensaje}
+                        </p>
+                        {notif.numeroProceso && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Expediente: <span className="font-medium">{notif.numeroProceso}</span>
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDistanceToNow(new Date(notif.fechaCreacion), { 
+                            addSuffix: true, 
+                            locale: es 
+                          })}
+                        </p>
+                        <div className="mt-2">
+                          {getEstadoBadge(notif.estado)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Detail Modal */}
+      <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              Detalle de Notificación
+            </DialogTitle>
+          </DialogHeader>
+          {selectedNotificacion && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                {getTipoBadge(selectedNotificacion.tipo)}
+                {getPrioridadBadge(selectedNotificacion.prioridad)}
+                {getEstadoBadge(selectedNotificacion.estado)}
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-lg">{selectedNotificacion.titulo}</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {format(new Date(selectedNotificacion.fechaCreacion), "EEEE dd 'de' MMMM 'de' yyyy, HH:mm", { locale: es })}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-muted/30 border">
+                <p className="whitespace-pre-wrap">{selectedNotificacion.mensaje}</p>
+              </div>
+
+              {selectedNotificacion.numeroProceso && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <FileText className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Expediente relacionado</p>
+                    <p className="font-medium">{selectedNotificacion.numeroProceso}</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedNotificacion.datosAdicionales && (
+                <div className="p-3 rounded-lg border bg-muted/20">
+                  <p className="text-sm font-medium mb-2">Información adicional</p>
+                  <div className="space-y-1 text-sm">
+                    {selectedNotificacion.datosAdicionales.materia && (
+                      <p><span className="text-muted-foreground">Materia:</span> {selectedNotificacion.datosAdicionales.materia}</p>
+                    )}
+                    {selectedNotificacion.datosAdicionales.tipoAudiencia && (
+                      <p><span className="text-muted-foreground">Tipo audiencia:</span> {selectedNotificacion.datosAdicionales.tipoAudiencia}</p>
+                    )}
+                    {selectedNotificacion.datosAdicionales.fechaHora && (
+                      <p>
+                        <span className="text-muted-foreground">Fecha programada:</span>{" "}
+                        {format(new Date(selectedNotificacion.datosAdicionales.fechaHora), "dd/MM/yyyy HH:mm", { locale: es })}
+                      </p>
+                    )}
+                    {selectedNotificacion.datosAdicionales.motivo && (
+                      <p><span className="text-muted-foreground">Motivo:</span> {selectedNotificacion.datosAdicionales.motivo}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                {selectedNotificacion.estado !== "archivada" && (
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => handleArchivar(selectedNotificacion)}
+                  >
+                    <Archive className="w-4 h-4 mr-2" />
+                    Archivar
+                  </Button>
+                )}
+                <Button
+                  className="flex-1"
+                  onClick={() => setDetailModalOpen(false)}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </FuncionariosLayout>
   );
 };
