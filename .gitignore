@@ -39,3 +39,14 @@ dist-ssr
 **/.env
 !.env.example
 !**/.env.example
+# Certificados y claves PKI (CRÍTICO - nunca subir al repositorio)
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+certificates/
+**/certificates/
+**/private_key*
+**/certificate*

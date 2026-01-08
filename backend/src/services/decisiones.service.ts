@@ -16,6 +16,7 @@ import { pseudonimosService } from "./pseudonimos.service.js";
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type {
   DecisionJudicial,
   DecisionJudicialPublica,
@@ -28,10 +29,10 @@ import type {
 } from "../types/index.js";
 
 // ============================================================================
-// CONFIGURACIÓN
+// CONFIGURACIÓN - Almacenamiento unificado con documentos del expediente
 // ============================================================================
 
-const DECISIONES_STORAGE_PATH = process.env.DECISIONES_FIRMADAS_PATH || "./storage/decisiones_firmadas";
+const DECISIONES_STORAGE_PATH = process.env.SECURE_DOCS_PATH || "./secure_docs_storage";
 
 // ============================================================================
 // INTERFACES INTERNAS
@@ -592,6 +593,9 @@ class DecisionesService {
     // 1. Obtener la decisión y verificar estado
     const client = await casesPool.connect();
     try {
+      // Iniciar transacción para atomicidad
+      await client.query('BEGIN');
+
       const result = await client.query(
         `SELECT d.*, c.numero_proceso, c.juez_pseudonimo as causa_juez_pseudonimo
          FROM decisiones_judiciales d
@@ -663,14 +667,41 @@ class DecisionesService {
       // Crear directorio si no existe
       await fs.mkdir(path.dirname(rutaAbsoluta), { recursive: true });
 
-      // Crear contenido del PDF (simulado - en producción usar librería PDF)
-      const pdfContent = this.generarPdfSimulado(contenidoFinal, metadatosFirma);
+      // Crear contenido del PDF real usando pdf-lib
+      const pdfContent = await this.generarPdfReal(contenidoFinal, metadatosFirma);
       await fs.writeFile(rutaAbsoluta, pdfContent);
 
       // 8. Calcular hash final del PDF
       const hashFinal = firmaService.calcularHash(pdfContent);
 
-      // 9. Actualizar decisión a estado FIRMADA (INMUTABLE desde aquí)
+      // 8.1. INSERTAR DOCUMENTO PRIMERO (antes de marcar como FIRMADA)
+      // Generar UUID para el documento
+      const documentoUuid = `dec-${decisionId}-${Date.now()}`;
+      
+      const documentoResult = await client.query(
+        `INSERT INTO documentos (
+          id, causa_id, tipo, nombre, ruta, hash_integridad,
+          tamanio_bytes, mime_type, subido_por_id, subido_por_nombre, fecha_subida, estado
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'application/pdf', $8, $9, NOW(), 'firmado')
+        RETURNING id`,
+        [
+          documentoUuid,
+          decision.causaId,
+          decision.tipoDecision.toLowerCase(), // auto, sentencia, providencia
+          `${decision.tipoDecision}_${decisionId}_${decision.titulo.substring(0, 50)}.pdf`,
+          rutaRelativa,
+          hashFinal,
+          pdfContent.length,
+          usuario.funcionarioId,
+          decision.juezPseudonimo, // Pseudónimo del juez que firma
+        ]
+      );
+
+      const documentoId = documentoResult.rows[0].id;
+
+      // 9. Actualizar decisión a estado FIRMADA con documento_id (INMUTABLE desde aquí)
+      // IMPORTANTE: Incluir documento_id aquí porque el trigger bloquea UPDATEs posteriores
+      
       const updateResult = await client.query(
         `UPDATE decisiones_judiciales SET
           estado = 'FIRMADA',
@@ -680,7 +711,8 @@ class DecisionesService {
           certificado_firmante = $4,
           numero_serie_certificado = $5,
           algoritmo_firma = $6,
-          firma_base64 = $7
+          firma_base64 = $7,
+          documento_id = $8
          WHERE decision_id = $1
          RETURNING *`,
         [
@@ -691,38 +723,100 @@ class DecisionesService {
           metadatosFirma.numeroSerieCertificado,
           metadatosFirma.algoritmoFirma,
           metadatosFirma.firmaBase64,
+          documentoId,
         ]
       );
 
       const decisionFirmada = this.mapearDecision(updateResult.rows[0]);
 
-      // 10. Auditoría detallada
-      await auditService.log({
-        tipoEvento: "DECISION_FIRMADA",
-        usuarioId: usuario.funcionarioId,
-        usuarioCorreo: usuario.correo,
-        moduloAfectado: "CASOS",
-        descripcion: `[CRITICO] Decisión judicial firmada electrónicamente`,
-        datosAfectados: {
-          decisionId,
-          causaId: decision.causaId,
-          numeroProceso,
-          tipoDecision: decision.tipoDecision,
-          titulo: decision.titulo,
-          hashDocumento: hashFinal,
-          certificadoFirmante: metadatosFirma.certificadoFirmante,
-          serialCertificado: metadatosFirma.numeroSerieCertificado,
-          algoritmo: metadatosFirma.algoritmoFirma,
-          rutaPdf: rutaRelativa,
-        },
-        ipOrigen,
-        userAgent,
-      });
+      // Actualizar objeto con documento_id
+      decisionFirmada.documentoId = documentoId;
 
+      // 9.1. ACTUALIZAR ESTADO DE LA CAUSA si es una SENTENCIA
+      if (decision.tipoDecision === 'SENTENCIA') {
+        await client.query(
+          `UPDATE causas SET estado_procesal = 'RESUELTA' WHERE causa_id = $1`,
+          [decision.causaId]
+        );
+
+        console.log(`[DECISIONES] Causa ${decision.causaId} actualizada a estado RESUELTA`);
+      }
+
+      // 9.2. CREAR EVENTO EN LÍNEA DE TIEMPO (si existe tabla de eventos)
+      // Usar SAVEPOINT para que un error aquí NO aborte la transacción principal
+      try {
+        await client.query('SAVEPOINT eventos_savepoint');
+        await client.query(
+          `INSERT INTO eventos_causa (
+            causa_id, tipo_evento, descripcion, 
+            fecha_evento, creado_por_id, documento_id
+          ) VALUES ($1, $2, $3, NOW(), $4, $5)`,
+          [
+            decision.causaId,
+            `FIRMA_${decision.tipoDecision}`,
+            `${decision.tipoDecision} firmado electrónicamente: ${decision.titulo}`,
+            usuario.funcionarioId,
+            documentoId,
+          ]
+        );
+        await client.query('RELEASE SAVEPOINT eventos_savepoint');
+      } catch (eventError) {
+        // Revertir solo el savepoint, no la transacción completa
+        await client.query('ROLLBACK TO SAVEPOINT eventos_savepoint');
+        // Tabla eventos_causa no disponible, se omite el evento
+      }
+
+      // CONFIRMAR TRANSACCIÓN
+      await client.query('COMMIT');
+      
       console.log(`[DECISIONES] ✅ Decisión ${decisionId} FIRMADA por ${metadatosFirma.certificadoFirmante}`);
+      console.log(`[DECISIONES] ✅ Documento ${documentoId} insertado en expediente electrónico`);
+
+      // Actualizar objeto con documento_id
+      decisionFirmada.documentoId = documentoId;
+
+      // 10. Auditoría detallada (después del COMMIT, en db_logs separada)
+      try {
+        await auditService.log({
+          tipoEvento: "DECISION_FIRMADA",
+          usuarioId: usuario.funcionarioId,
+          usuarioCorreo: usuario.correo,
+          moduloAfectado: "CASOS",
+          descripcion: `[CRITICO] Decisión judicial firmada electrónicamente y vinculada al expediente`,
+          datosAfectados: {
+            decisionId,
+            causaId: decision.causaId,
+            numeroProceso,
+            tipoDecision: decision.tipoDecision,
+            titulo: decision.titulo,
+            hashDocumento: hashFinal,
+            certificadoFirmante: metadatosFirma.certificadoFirmante,
+            serialCertificado: metadatosFirma.numeroSerieCertificado,
+            algoritmo: metadatosFirma.algoritmoFirma,
+            rutaPdf: rutaRelativa,
+            documentoId: documentoId,
+            vinculadoExpediente: true,
+            estadoCausaActualizado: decision.tipoDecision === 'SENTENCIA',
+          },
+          ipOrigen,
+          userAgent,
+        });
+      } catch (auditError) {
+        // Auditoría no debe fallar la transacción principal
+        console.error(`[DECISIONES] ⚠️ Error en auditoría (no afecta firma):`, auditError);
+      }
 
       return decisionFirmada;
 
+    } catch (error) {
+      // Revertir cambios en caso de error
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        // Ignorar error de rollback si ya se hizo commit
+      }
+      console.error(`[DECISIONES] ❌ Error en firma, transacción revertida:`, error);
+      throw error;
     } finally {
       client.release();
     }
@@ -777,28 +871,137 @@ La firma electrónica tiene la misma validez jurídica que la firma manuscrita.
   }
 
   /**
-   * Genera un PDF simulado (en producción usar librería como pdf-lib o puppeteer)
+   * Genera un PDF real usando pdf-lib con el contenido de la decisión y metadatos de firma
    */
-  private generarPdfSimulado(contenido: string, firma: MetadatosFirma): Buffer {
-    // Crear un buffer que simula un PDF con el contenido y metadatos de firma
-    const pdfData = {
-      version: "1.0",
-      tipo: "DecisionJudicialFirmada",
-      contenido,
-      firma: {
-        algoritmo: firma.algoritmoFirma,
-        certificado: firma.certificadoFirmante,
-        serial: firma.numeroSerieCertificado,
-        fecha: firma.fechaFirma.toISOString(),
-        hash: firma.hashDocumento,
-        firmaBase64: firma.firmaBase64,
-      },
-      generado: new Date().toISOString(),
-    };
-
-    // En producción, aquí se generaría un PDF real con la firma embebida
-    // Por ahora, devolvemos un JSON que simula el contenido del PDF
-    return Buffer.from(JSON.stringify(pdfData, null, 2), "utf-8");
+  private async generarPdfReal(contenido: string, firma: MetadatosFirma): Promise<Buffer> {
+    // Crear nuevo documento PDF
+    const pdfDoc = await PDFDocument.create();
+    
+    // Cargar fuentes
+    const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+    // Configuración de página
+    const pageWidth = 612; // Letter size
+    const pageHeight = 792;
+    const margin = 50;
+    const lineHeight = 14;
+    const maxWidth = pageWidth - (margin * 2);
+    
+    // Dividir contenido en líneas
+    const lines = contenido.split('\n');
+    let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+    let yPosition = pageHeight - margin;
+    
+    for (const line of lines) {
+      // Si no hay espacio, crear nueva página
+      if (yPosition < margin + 100) {
+        currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+        yPosition = pageHeight - margin;
+      }
+      
+      // Detectar si es título (líneas con ===)
+      const isSeparator = line.includes('===') || line.includes('---');
+      const font = isSeparator ? helvetica : (line.trim().toUpperCase() === line.trim() && line.trim().length > 3 ? helveticaBold : helvetica);
+      const fontSize = isSeparator ? 8 : (line.trim().toUpperCase() === line.trim() && line.trim().length > 3 ? 12 : 10);
+      
+      if (isSeparator) {
+        // Dibujar línea horizontal
+        currentPage.drawLine({
+          start: { x: margin, y: yPosition },
+          end: { x: pageWidth - margin, y: yPosition },
+          thickness: 0.5,
+          color: rgb(0.5, 0.5, 0.5),
+        });
+        yPosition -= lineHeight;
+      } else {
+        // Texto normal - dividir líneas largas
+        const words = line.split(' ');
+        let currentLine = '';
+        
+        for (const word of words) {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+          
+          if (textWidth > maxWidth && currentLine) {
+            currentPage.drawText(currentLine, {
+              x: margin,
+              y: yPosition,
+              size: fontSize,
+              font,
+              color: rgb(0, 0, 0),
+            });
+            yPosition -= lineHeight;
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        
+        if (currentLine) {
+          currentPage.drawText(currentLine, {
+            x: margin,
+            y: yPosition,
+            size: fontSize,
+            font,
+            color: rgb(0, 0, 0),
+          });
+          yPosition -= lineHeight;
+        }
+      }
+    }
+    
+    // Agregar información de firma al final
+    yPosition -= lineHeight * 2;
+    if (yPosition < margin + 100) {
+      currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+      yPosition = pageHeight - margin;
+    }
+    
+    // Cuadro de firma electrónica
+    currentPage.drawRectangle({
+      x: margin,
+      y: yPosition - 70,
+      width: maxWidth,
+      height: 70,
+      borderColor: rgb(0.2, 0.5, 0.2),
+      borderWidth: 1,
+    });
+    
+    currentPage.drawText('FIRMADO ELECTRÓNICAMENTE', {
+      x: margin + 10,
+      y: yPosition - 20,
+      size: 11,
+      font: helveticaBold,
+      color: rgb(0.2, 0.5, 0.2),
+    });
+    
+    currentPage.drawText(`Por: ${firma.certificadoFirmante}`, {
+      x: margin + 10,
+      y: yPosition - 38,
+      size: 9,
+      font: helvetica,
+      color: rgb(0.3, 0.3, 0.3),
+    });
+    
+    currentPage.drawText('Conforme a la Ley de Comercio Electrónico, Firmas y Mensajes de Datos del Ecuador.', {
+      x: margin + 10,
+      y: yPosition - 54,
+      size: 8,
+      font: helvetica,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+    
+    // Agregar metadatos al PDF
+    pdfDoc.setTitle('Decisión Judicial Firmada');
+    pdfDoc.setSubject('Documento firmado electrónicamente');
+    pdfDoc.setCreator('Sistema Juez Seguro');
+    pdfDoc.setProducer('Consejo de la Judicatura - Ecuador');
+    pdfDoc.setCreationDate(new Date());
+    
+    // Generar bytes del PDF
+    const pdfBytes = await pdfDoc.save();
+    return Buffer.from(pdfBytes);
   }
 
   /**

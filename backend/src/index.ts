@@ -27,6 +27,9 @@ import plazosRoutes from "./routes/plazos.routes.js";
 // Importar servicio de alertas para monitoreo
 import { alertasService } from "./services/alertas.service.js";
 
+// Importar interceptor de auditoría transversal (Sprint 3)
+import { injectAuditInterceptor, auditInterceptor } from "./middleware/audit-interceptor.middleware.js";
+
 // ============================================================================
 // Crear aplicación Express
 // ============================================================================
@@ -91,6 +94,9 @@ app.use("/api/auth/login", authLimiter);
 // Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// Inyectar interceptor de auditoría en todas las requests
+app.use(injectAuditInterceptor);
 
 // ============================================================================
 // Middleware de Logging
@@ -254,6 +260,16 @@ const startServer = async () => {
         ipOrigen: "localhost",
         userAgent: "system",
       }).catch(console.error);
+
+      // Suscribir listener global para eventos de alta criticidad (Sprint 3)
+      auditInterceptor.subscribe("*", async (evento: { criticidad: string; tipo: string; modulo: string; usuarioCorreo: string }) => {
+        if (evento.criticidad === "ALTA") {
+          console.log(
+            `🔒 [AUDIT] ${evento.tipo} | ${evento.modulo} | Usuario: ${evento.usuarioCorreo} | ${new Date().toISOString()}`
+          );
+        }
+      });
+      console.log("🔍 Interceptor de auditoría transversal iniciado");
     });
 
     // Graceful shutdown

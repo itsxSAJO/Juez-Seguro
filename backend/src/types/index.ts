@@ -143,20 +143,52 @@ export interface Expediente {
 // AUDITORÍA (FAU)
 // ============================================================================
 export type TipoEventoAuditoria = 
+  // Autenticación
   | "LOGIN_EXITOSO"
   | "LOGIN_FALLIDO"
   | "LOGOUT"
+  | "ACCESO_DENEGADO"
+  // Causas
   | "CREACION_CAUSA"
   | "CAMBIO_ESTADO"
-  | "ACCESO_DENEGADO"
   | "CONSULTA_AUDITORIA"
+  // Usuarios
   | "CREACION_USUARIO"
   | "MODIFICACION_USUARIO"
   | "BLOQUEO_CUENTA"
   | "DESBLOQUEO_CUENTA"
+  // Sprint 3 - HU-JZ-003: Decisiones y Firmas
+  | "CREACION_DECISION"
+  | "ACTUALIZACION_DECISION"
+  | "DECISION_LISTA_FIRMA"
+  | "DECISION_FIRMADA"
+  | "FIRMA_DENEGADA"
+  | "MODIFICACION_DENEGADA"
+  | "ELIMINACION_DECISION"
+  | "VERIFICACION_FIRMA"
+  // Sprint 3 - HU-SJ-004: Notificaciones y Plazos
+  | "CREACION_NOTIFICACION"
+  | "ENVIO_NOTIFICACION"
+  | "ENTREGA_NOTIFICACION"
+  | "FALLO_NOTIFICACION"
+  | "CREACION_PLAZO"
+  | "CAMBIO_ESTADO_PLAZO"
+  | "ESCANEO_PLAZOS"
+  | "ESCANEO_MANUAL_PLAZOS"
+  | "ALERTA_PLAZO_ENVIADA"
+  | "LECTURA_ALERTA"
   | string;
 
-export type ModuloAfectado = "AUTH" | "CASOS" | "ADMIN" | "DOCUMENTOS" | "AUDIENCIAS" | "NOTIFICACIONES";
+export type ModuloAfectado = 
+  | "AUTH" 
+  | "CASOS" 
+  | "ADMIN" 
+  | "DOCUMENTOS" 
+  | "AUDIENCIAS" 
+  | "NOTIFICACIONES"
+  | "DECISIONES"
+  | "PLAZOS"
+  | "FIRMAS";
 
 // Mapeado a la tabla 'logs_auditoria'
 export interface LogAuditoria {

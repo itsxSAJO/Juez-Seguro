@@ -318,12 +318,16 @@ router.post(
         success: true,
         message: "Decisión firmada exitosamente. El documento es ahora INMUTABLE.",
         data: {
-          decisionId: decision.decisionId,
-          estado: decision.estado,
-          fechaFirma: decision.fechaFirma,
-          hashIntegridad: decision.hashIntegridadPdf,
-          certificadoFirmante: decision.certificadoFirmante,
-          algoritmoFirma: decision.algoritmoFirma,
+          decision: decision,
+          mensaje: "Decisión firmada exitosamente. El documento es ahora INMUTABLE.",
+          firmaInfo: {
+            hash: decision.hashIntegridadPdf || "",
+            algoritmo: decision.algoritmoFirma || "",
+            certificado: decision.certificadoFirmante || "",
+            fechaFirma: decision.fechaFirma || new Date().toISOString(),
+            numeroSerie: decision.numeroSerieCertificado || "",
+          },
+          pdfUrl: decision.rutaPdfFirmado ? `/api/decisiones/${decisionId}/descargar` : undefined,
         },
       });
     } catch (error) {
