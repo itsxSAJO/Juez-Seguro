@@ -20,6 +20,12 @@ import notificacionesRoutes from "./routes/notificaciones.routes.js";
 import usuariosRoutes from "./routes/usuarios.routes.js";
 import auditoriaRoutes from "./routes/auditoria.routes.js";
 import publicoRoutes from "./routes/publico.routes.js";
+import decisionesRoutes from "./routes/decisiones.routes.js";
+import notificacionesProcesalesRoutes from "./routes/notificaciones-procesales.routes.js";
+import plazosRoutes from "./routes/plazos.routes.js";
+
+// Importar servicio de alertas para monitoreo
+import { alertasService } from "./services/alertas.service.js";
 
 // ============================================================================
 // Crear aplicación Express
@@ -141,6 +147,9 @@ app.use("/api/audiencias", audienciasRoutes);
 app.use("/api/notificaciones", notificacionesRoutes);
 app.use("/api/usuarios", usuariosRoutes);
 app.use("/api/auditoria", auditoriaRoutes);
+app.use("/api/decisiones", decisionesRoutes);
+app.use("/api/notificaciones-procesales", notificacionesProcesalesRoutes);
+app.use("/api/plazos", plazosRoutes);
 
 // Rutas públicas (Portal Ciudadano)
 app.use("/api/publico", publicoRoutes);
@@ -221,10 +230,17 @@ const startServer = async () => {
 ║  📬 Notificaciones: http://localhost:${config.port}/api/notificaciones║
 ║  📋 Auditoría:    http://localhost:${config.port}/api/auditoria     ║
 ║  🏛️  Portal Público: http://localhost:${config.port}/api/publico    ║
+║  ⚖️  Decisiones:   http://localhost:${config.port}/api/decisiones   ║
+║  📜 Notif.Proc:   http://localhost:${config.port}/api/notificaciones-procesales ║
+║  ⏱️  Plazos:       http://localhost:${config.port}/api/plazos        ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  Common Criteria: FIA ✓ | FDP ✓ | FAU ✓                   ║
 ╚═══════════════════════════════════════════════════════════╝
       `);
+
+      // Iniciar monitoreo de plazos (cada 60 minutos)
+      alertasService.iniciarMonitoreo(60);
+      console.log("⏰ Monitoreo de plazos iniciado");
 
       // Registrar inicio del sistema en auditoría
       auditService.log({
