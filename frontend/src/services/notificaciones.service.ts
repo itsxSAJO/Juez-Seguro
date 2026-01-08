@@ -122,4 +122,121 @@ export const notificacionesService = {
     
     return {};
   },
+
+  // ==========================================================================
+  // NOTIFICACIONES INTERNAS DEL SISTEMA
+  // ==========================================================================
+
+  /**
+   * Obtiene las notificaciones internas del usuario actual
+   */
+  async getMisNotificaciones(filtros?: {
+    estado?: "no_leida" | "leida" | "archivada" | "todas";
+    tipo?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ notificaciones: NotificacionInterna[]; total: number; noLeidas: number }> {
+    const params: Record<string, string> = {};
+    
+    if (filtros) {
+      if (filtros.estado) params.estado = filtros.estado;
+      if (filtros.tipo) params.tipo = filtros.tipo;
+      if (filtros.page) params.page = filtros.page.toString();
+      if (filtros.pageSize) params.pageSize = filtros.pageSize.toString();
+    }
+
+    const response = await api.get<{
+      success: boolean;
+      data: NotificacionInterna[];
+      total: number;
+      noLeidas: number;
+    }>("/notificaciones/internas/mis-notificaciones", params);
+
+    if (response.success && response.data) {
+      return {
+        notificaciones: response.data,
+        total: response.total || 0,
+        noLeidas: response.noLeidas || 0,
+      };
+    }
+
+    return { notificaciones: [], total: 0, noLeidas: 0 };
+  },
+
+  /**
+   * Obtiene el conteo de notificaciones no leídas
+   */
+  async getConteoNoLeidas(): Promise<number> {
+    const response = await api.get<{ success: boolean; data: { noLeidas: number } }>(
+      "/notificaciones/internas/conteo"
+    );
+
+    if (response.success && response.data) {
+      return response.data.noLeidas;
+    }
+
+    return 0;
+  },
+
+  /**
+   * Marca una notificación interna como leída
+   */
+  async marcarLeida(id: number): Promise<NotificacionInterna | null> {
+    const response = await api.patch<ApiResponse<NotificacionInterna>>(
+      `/notificaciones/internas/${id}/leer`
+    );
+
+    if (response.success && response.data) {
+      return response.data;
+    }
+
+    return null;
+  },
+
+  /**
+   * Marca todas las notificaciones como leídas
+   */
+  async marcarTodasLeidas(): Promise<number> {
+    const response = await api.patch<{ success: boolean; data: { marcadas: number } }>(
+      "/notificaciones/internas/marcar-todas-leidas"
+    );
+
+    if (response.success && response.data) {
+      return response.data.marcadas;
+    }
+
+    return 0;
+  },
+
+  /**
+   * Archiva una notificación interna
+   */
+  async archivar(id: number): Promise<NotificacionInterna | null> {
+    const response = await api.patch<ApiResponse<NotificacionInterna>>(
+      `/notificaciones/internas/${id}/archivar`
+    );
+
+    if (response.success && response.data) {
+      return response.data;
+    }
+
+    return null;
+  },
 };
+
+// Tipo para notificaciones internas
+export interface NotificacionInterna {
+  id: number;
+  destinatarioId: number;
+  tipo: "causa_asignada" | "audiencia_programada" | "audiencia_reprogramada" | "audiencia_cancelada" | "documento_agregado" | "plazo_proximo" | "sistema";
+  titulo: string;
+  mensaje: string;
+  causaId?: number;
+  audienciaId?: number;
+  estado: "no_leida" | "leida" | "archivada";
+  prioridad: "baja" | "normal" | "alta" | "urgente";
+  datosAdicionales?: Record<string, any>;
+  fechaCreacion: string;
+  fechaLectura?: string;
+  numeroProceso?: string;
+}

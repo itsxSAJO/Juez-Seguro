@@ -174,32 +174,39 @@ const DashboardFuncionarios = () => {
               </div>
             ) : proximasAudiencias.length > 0 ? (
               <div className="space-y-3">
-                {proximasAudiencias.map((aud) => (
+                {proximasAudiencias.map((aud) => {
+                  // Obtener fecha en formato correcto
+                  const fechaAud = aud.fechaHora || aud.fecha_hora || aud.fecha || new Date().toISOString();
+                  const fechaObj = new Date(fechaAud);
+                  const hora = aud.hora || fechaObj.toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" });
+                  
+                  return (
                   <div
                     key={aud.id}
                     className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                   >
                     <div className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-primary/10 text-primary">
                       <span className="text-xs font-medium">
-                        {new Date(aud.fecha).toLocaleDateString("es-EC", { day: "2-digit" })}
+                        {fechaObj.toLocaleDateString("es-EC", { day: "2-digit" })}
                       </span>
                       <span className="text-xs">
-                        {new Date(aud.fecha).toLocaleDateString("es-EC", { month: "short" })}
+                        {fechaObj.toLocaleDateString("es-EC", { month: "short" })}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{aud.numeroExpediente}</p>
+                      <p className="text-sm font-medium truncate">{aud.numeroExpediente || `Causa ${aud.causaId}`}</p>
                       <p className="text-xs text-muted-foreground capitalize">
-                        {aud.tipo} - {aud.hora} - {aud.sala}
+                        {aud.tipo} - {hora} - {aud.sala}
                       </p>
                     </div>
-                    {aud.historialCambios.length > 0 && (
+                    {(aud.historialCambios?.length ?? 0) > 0 && (
                       <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">
                         Reprogramada
                       </Badge>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">

@@ -330,4 +330,31 @@ router.patch(
   }
 );
 
+/**
+ * GET /api/causas/:id/historial-reprogramaciones
+ * Obtiene el historial de reprogramaciones de audiencias para la línea del tiempo
+ * HU-SJ-003: Trazabilidad de audiencias en el expediente electrónico
+ */
+router.get(
+  "/:id/historial-reprogramaciones",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  verificarPropiedadCausa("id"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // Importar dinámicamente el servicio de audiencias
+      const { audienciasService } = await import("../services/audiencias.service.js");
+      const historial = await audienciasService.getHistorialReprogramacionesByCausa(req.params.id);
+
+      res.json({
+        success: true,
+        data: historial,
+        total: historial.length,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

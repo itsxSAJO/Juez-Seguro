@@ -1,5 +1,7 @@
 // ============================================================================
 // JUEZ SEGURO BACKEND - Rutas de Audiencias
+// HU-SJ-003: Programación y gestión de audiencias
+// HU-JZ-002: Consulta de la agenda de audiencias del juez
 // ============================================================================
 
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -7,7 +9,7 @@ import { z } from "zod";
 import { audienciasService } from "../services/audiencias.service.js";
 import { auditService } from "../services/audit.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
-import { verificarPropiedadAudiencia } from "../middleware/access-control.middleware.js";
+import { verificarPropiedadAudiencia, verificarSecretarioPropietarioCausa } from "../middleware/access-control.middleware.js";
 
 import type { EstadoAudiencia } from "../types/index.js";
 
@@ -18,8 +20,11 @@ const router = Router();
 // ============================================================================
 
 const crearAudienciaSchema = z.object({
-  causaId: z.string().uuid("ID de causa inválido"),
-  tipo: z.enum(["preliminar", "juicio", "conciliacion", "sentencia", "otra"]),
+  causaId: z.union([
+    z.string().regex(/^\d+$/, "ID de causa debe ser numérico"),
+    z.number().int().positive()
+  ]).transform(val => String(val)),
+  tipo: z.enum(["preliminar", "juicio", "conciliacion", "sentencia", "otra", "inicial", "evaluacion", "resolucion"]),
   fechaHora: z.string().datetime(),
   sala: z.string().min(1, "Sala es requerida"),
   duracionMinutos: z.number().min(15).max(480).optional(),
@@ -40,6 +45,9 @@ const reprogramarSchema = z.object({
 /**
  * GET /api/audiencias
  * Obtiene audiencias con filtros
+ * - JUEZ: Solo ve audiencias de causas asignadas a él
+ * - SECRETARIO: Solo ve audiencias de causas que él creó
+ * - ADMIN_CJ: Ve todas las audiencias
  */
 router.get(
   "/",
@@ -51,6 +59,7 @@ router.get(
         causaId?: string;
         estado?: EstadoAudiencia;
         juezId?: string;
+        secretarioCreadorId?: string;
         page?: number;
         pageSize?: number;
       } = {
@@ -60,12 +69,35 @@ router.get(
         pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : undefined,
       };
 
-      // Si es juez, solo ve sus audiencias
+      // Filtrar según rol
       if (req.user?.rol === "JUEZ") {
+        // Juez solo ve audiencias de sus causas
         filtros.juezId = String(req.user.funcionarioId);
+      } else if (req.user?.rol === "SECRETARIO") {
+        // Secretario solo ve audiencias de causas que él creó
+        filtros.secretarioCreadorId = String(req.user.funcionarioId);
       }
+      // ADMIN_CJ ve todas
 
       const resultado = await audienciasService.getAudiencias(filtros);
+
+      // Registrar consulta en auditoría
+      await auditService.logCRUD(
+        "audiencia", 
+        "consultar", 
+        req.user!.funcionarioId, 
+        null, 
+        {
+          filtros: {
+            causaId: filtros.causaId,
+            estado: filtros.estado,
+          },
+          totalResultados: resultado.total,
+        },
+        getClientIp(req),
+        getUserAgent(req),
+        req.user!.correo
+      );
 
       res.json({
         success: true,
@@ -80,7 +112,8 @@ router.get(
 
 /**
  * GET /api/audiencias/hoy
- * Obtiene audiencias del día
+ * Obtiene audiencias del día con indicadores de reprogramación
+ * HU-JZ-002: Agenda del juez con trazabilidad
  */
 router.get(
   "/hoy",
@@ -89,7 +122,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const juezId = req.user?.rol === "JUEZ" ? String(req.user.funcionarioId) : undefined;
-      const audiencias = await audienciasService.getAudienciasHoy(juezId);
+      const audiencias = await audienciasService.getAudienciasHoyConHistorial(juezId);
 
       res.json({
         success: true,
@@ -103,7 +136,8 @@ router.get(
 
 /**
  * GET /api/audiencias/semana
- * Obtiene audiencias de la semana
+ * Obtiene audiencias de la semana con indicadores de reprogramación
+ * HU-JZ-002: Agenda del juez con trazabilidad
  */
 router.get(
   "/semana",
@@ -112,7 +146,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const juezId = req.user?.rol === "JUEZ" ? String(req.user.funcionarioId) : undefined;
-      const audiencias = await audienciasService.getAudienciasSemana(juezId);
+      const audiencias = await audienciasService.getAudienciasSemanaConHistorial(juezId);
 
       res.json({
         success: true,
@@ -125,13 +159,99 @@ router.get(
 );
 
 /**
+ * GET /api/audiencias/agenda
+ * Obtiene la agenda completa del juez con historial de cambios
+ * HU-JZ-002: Consulta de la agenda de audiencias del juez
+ */
+router.get(
+  "/agenda",
+  authenticate,
+  authorize("JUEZ", "ADMIN_CJ"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const juezId = req.user?.rol === "JUEZ" 
+        ? String(req.user.funcionarioId) 
+        : req.query.juezId as string;
+
+      if (!juezId) {
+        res.status(400).json({
+          success: false,
+          error: "Se requiere ID del juez",
+        });
+        return;
+      }
+
+      const fechaDesde = req.query.fechaDesde 
+        ? new Date(req.query.fechaDesde as string) 
+        : undefined;
+      const fechaHasta = req.query.fechaHasta 
+        ? new Date(req.query.fechaHasta as string) 
+        : undefined;
+
+      const audiencias = await audienciasService.getAgendaJuez(juezId, fechaDesde, fechaHasta);
+
+      res.json({
+        success: true,
+        data: audiencias,
+        total: audiencias.length,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/audiencias/reprogramadas-recientes
+ * Obtiene audiencias reprogramadas recientemente para alertar al juez
+ * HU-JZ-002: Para que el juez sepa si le movieron la agenda
+ */
+router.get(
+  "/reprogramadas-recientes",
+  authenticate,
+  authorize("JUEZ", "ADMIN_CJ"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const juezId = req.user?.rol === "JUEZ" 
+        ? String(req.user.funcionarioId) 
+        : req.query.juezId as string;
+
+      if (!juezId) {
+        res.status(400).json({
+          success: false,
+          error: "Se requiere ID del juez",
+        });
+        return;
+      }
+
+      const diasAtras = req.query.dias ? parseInt(req.query.dias as string) : 7;
+
+      const audiencias = await audienciasService.getAudienciasReprogramadasRecientes(juezId, diasAtras);
+
+      res.json({
+        success: true,
+        data: audiencias,
+        total: audiencias.length,
+        mensaje: audiencias.length > 0 
+          ? `${audiencias.length} audiencia(s) han sido reprogramadas en los últimos ${diasAtras} días`
+          : "No hay audiencias reprogramadas recientemente",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * POST /api/audiencias
  * Crea una nueva audiencia
+ * Solo SECRETARIO puede crear, y solo para causas que él creó
  */
 router.post(
   "/",
   authenticate,
-  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  authorize("ADMIN_CJ", "SECRETARIO"),
+  verificarSecretarioPropietarioCausa("causaId"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const datos = crearAudienciaSchema.parse(req.body);
@@ -212,22 +332,35 @@ router.patch(
 
 /**
  * PATCH /api/audiencias/:id/reprogramar
- * Reprograma una audiencia
- * HU-JZ-001: Control de acceso con verificación de propiedad (FIA_ATD.1)
+ * Reprograma una audiencia con registro de historial
+ * HU-SJ-003: Gestión de audiencias con trazabilidad
+ * Solo SECRETARIO que creó la causa puede reprogramar
  */
 router.patch(
   "/:id/reprogramar",
   authenticate,
-  authorize("ADMIN_CJ", "JUEZ"),
+  authorize("ADMIN_CJ", "SECRETARIO"),
   verificarPropiedadAudiencia("id"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const datos = reprogramarSchema.parse(req.body);
 
+      // Validar que la nueva fecha sea futura
+      const nuevaFecha = new Date(datos.nuevaFecha);
+      if (nuevaFecha <= new Date()) {
+        res.status(400).json({
+          success: false,
+          error: "La nueva fecha debe ser futura",
+        });
+        return;
+      }
+
       const audiencia = await audienciasService.reprogramar(
         req.params.id,
-        new Date(datos.nuevaFecha),
-        datos.motivo
+        nuevaFecha,
+        datos.motivo,
+        req.user!.funcionarioId,
+        getClientIp(req)
       );
 
       if (!audiencia) {
@@ -241,12 +374,13 @@ router.patch(
       await auditService.logCRUD("audiencia", "reprogramar", req.user!.funcionarioId, req.params.id, {
         nuevaFecha: datos.nuevaFecha,
         motivo: datos.motivo,
+        accion: "HU-SJ-003: Reprogramación con trazabilidad",
       }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       res.json({
         success: true,
         data: audiencia,
-        message: "Audiencia reprogramada exitosamente",
+        message: "Audiencia reprogramada exitosamente. Se ha registrado el cambio en el historial.",
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -257,6 +391,67 @@ router.patch(
         });
         return;
       }
+      if (error instanceof Error && error.message.includes("fecha")) {
+        res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+        return;
+      }
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/audiencias/:id/historial
+ * Obtiene el historial de reprogramaciones de una audiencia
+ * HU-JZ-002: Para que el juez sepa si le movieron la agenda
+ */
+router.get(
+  "/:id/historial",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const historial = await audienciasService.getHistorialReprogramaciones(req.params.id);
+
+      res.json({
+        success: true,
+        data: historial,
+        total: historial.length,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/audiencias/:id
+ * Obtiene una audiencia por ID con su historial
+ */
+router.get(
+  "/:id",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const audiencia = await audienciasService.getAudienciaById(req.params.id);
+
+      if (!audiencia) {
+        res.status(404).json({
+          success: false,
+          error: "Audiencia no encontrada",
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: audiencia,
+      });
+    } catch (error) {
       next(error);
     }
   }

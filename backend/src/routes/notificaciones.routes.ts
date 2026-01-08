@@ -292,4 +292,173 @@ router.patch(
   }
 );
 
+// ============================================================================
+// NOTIFICACIONES INTERNAS DEL SISTEMA (para jueces y funcionarios)
+// ============================================================================
+
+/**
+ * GET /api/notificaciones/internas/mis-notificaciones
+ * Obtiene las notificaciones internas del usuario autenticado
+ */
+router.get(
+  "/internas/mis-notificaciones",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const filtros = {
+        destinatarioId: req.user!.funcionarioId,
+        estado: (req.query.estado as any) || "todas",
+        tipo: req.query.tipo as any,
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : 20,
+      };
+
+      const resultado = await notificacionesService.getMisNotificaciones(filtros);
+
+      res.json({
+        success: true,
+        data: resultado.notificaciones,
+        total: resultado.total,
+        noLeidas: resultado.noLeidas,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/notificaciones/internas/conteo
+ * Obtiene el conteo de notificaciones no leídas
+ */
+router.get(
+  "/internas/conteo",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const noLeidas = await notificacionesService.getConteoNoLeidas(req.user!.funcionarioId);
+
+      res.json({
+        success: true,
+        data: { noLeidas },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * PATCH /api/notificaciones/internas/:id/leer
+ * Marca una notificación interna como leída
+ */
+router.patch(
+  "/internas/:id/leer",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          error: "ID de notificación inválido",
+        });
+        return;
+      }
+
+      const notificacion = await notificacionesService.marcarNotificacionInternaLeida(
+        id,
+        req.user!.funcionarioId
+      );
+
+      if (!notificacion) {
+        res.status(404).json({
+          success: false,
+          error: "Notificación no encontrada o no pertenece al usuario",
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: notificacion,
+        message: "Notificación marcada como leída",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * PATCH /api/notificaciones/internas/marcar-todas-leidas
+ * Marca todas las notificaciones internas como leídas
+ */
+router.patch(
+  "/internas/marcar-todas-leidas",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const cantidad = await notificacionesService.marcarTodasLeidas(req.user!.funcionarioId);
+
+      res.json({
+        success: true,
+        data: { marcadas: cantidad },
+        message: `${cantidad} notificación(es) marcada(s) como leída(s)`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * PATCH /api/notificaciones/internas/:id/archivar
+ * Archiva una notificación interna
+ */
+router.patch(
+  "/internas/:id/archivar",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        res.status(400).json({
+          success: false,
+          error: "ID de notificación inválido",
+        });
+        return;
+      }
+
+      const notificacion = await notificacionesService.archivarNotificacionInterna(
+        id,
+        req.user!.funcionarioId
+      );
+
+      if (!notificacion) {
+        res.status(404).json({
+          success: false,
+          error: "Notificación no encontrada o no pertenece al usuario",
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: notificacion,
+        message: "Notificación archivada",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

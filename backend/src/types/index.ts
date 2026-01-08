@@ -196,6 +196,7 @@ export interface Documento {
   fechaSubida?: Date; // Alias
   subido_por_id?: number;
   subidoPorId?: number; // Alias
+  subidoPor?: string; // Alias - pseudónimo del que subió
   subidoPorNombre?: string; // Alias
   hash_integridad: string;
   hashIntegridad?: string; // Alias
@@ -242,6 +243,49 @@ export type TipoNotificacion = "citacion" | "notificacion" | "emplazamiento" | "
 export type MedioNotificacion = "electronico" | "fisico" | "judicial";
 
 export type EstadoNotificacion = "enviada" | "recibida" | "vencida" | "pendiente" | "leida" | "fallida" | "cancelada";
+
+// Tipos para notificaciones internas del sistema
+export type TipoNotificacionInterna = 
+  | "causa_asignada"
+  | "audiencia_programada"
+  | "audiencia_reprogramada"
+  | "audiencia_cancelada"
+  | "documento_agregado"
+  | "plazo_proximo"
+  | "sistema";
+
+export type EstadoNotificacionInterna = "no_leida" | "leida" | "archivada";
+
+export type PrioridadNotificacion = "baja" | "normal" | "alta" | "urgente";
+
+export interface NotificacionInterna {
+  id: number;
+  notificacion_id?: number; // Alias
+  destinatarioId: number;
+  destinatario_id?: number; // Alias
+  tipo: TipoNotificacionInterna;
+  titulo: string;
+  mensaje: string;
+  causaId?: number;
+  causa_id?: number; // Alias
+  audienciaId?: number;
+  audiencia_id?: number; // Alias
+  estado: EstadoNotificacionInterna;
+  prioridad: PrioridadNotificacion;
+  datosAdicionales?: Record<string, any>;
+  datos_adicionales?: Record<string, any>; // Alias
+  creadoPorId?: number;
+  creado_por_id?: number; // Alias
+  ipOrigen?: string;
+  ip_origen?: string; // Alias
+  fechaCreacion: Date;
+  fecha_creacion?: Date; // Alias
+  fechaLectura?: Date;
+  fecha_lectura?: Date; // Alias
+  // Campos de JOIN
+  numeroProceso?: string;
+  numero_proceso?: string; // Alias
+}
 
 export interface Notificacion {
   id: string;

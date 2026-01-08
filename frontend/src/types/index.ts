@@ -112,38 +112,63 @@ export interface SubirDocumentoRequest {
 
 // ============================================================================
 // TIPOS DE AUDIENCIAS
+// HU-SJ-003 & HU-JZ-002: Gestión de audiencias con trazabilidad
 // ============================================================================
-export type TipoAudiencia = "inicial" | "evaluacion" | "juicio" | "resolucion" | "conciliacion";
+export type TipoAudiencia = "inicial" | "evaluacion" | "juicio" | "resolucion" | "conciliacion" | "preliminar" | "sentencia" | "otra";
 
-export type EstadoAudiencia = "programada" | "realizada" | "reprogramada" | "cancelada";
+export type EstadoAudiencia = "programada" | "realizada" | "reprogramada" | "cancelada" | "en_curso" | "suspendida";
+
+export type Modalidad = "presencial" | "virtual";
 
 export interface Audiencia {
   id: string;
   causaId: string;
-  numeroExpediente: string;
+  numeroExpediente?: string;
+  materia?: string;
   tipo: TipoAudiencia;
-  fecha: string;
-  hora: string;
+  // Fecha unificada (ISO string)
+  fecha?: string;
+  fechaHora?: string;
+  fecha_hora?: string;
+  // Hora separada (para compatibilidad)
+  hora?: string;
   sala: string;
+  duracionMinutos?: number;
+  modalidad?: Modalidad;
+  enlaceVirtual?: string;
   estado: EstadoAudiencia;
-  partes: string[];
-  notas: string;
+  partes?: string[];
+  notas?: string;
+  observaciones?: string;
+  programadaPorId?: number;
+  // Historial de cambios (HU-JZ-002)
   historialCambios?: CambioAudiencia[];
+  // Indicador de reprogramación (HU-JZ-002)
+  fueReprogramada?: boolean;
 }
 
 export interface CambioAudiencia {
   fecha: string;
   cambio: string;
   usuario: string;
+  // Campos adicionales del historial de reprogramaciones
+  historialId?: number;
+  fechaHoraAnterior?: string;
+  fechaHoraNueva?: string;
+  motivoReprogramacion?: string;
+  tipoCambio?: "REPROGRAMACION" | "CANCELACION" | "CAMBIO_SALA";
 }
 
 export interface ProgramarAudienciaRequest {
   causaId: string;
   tipo: TipoAudiencia;
-  fecha: string;
-  hora: string;
+  // Formato ISO datetime
+  fechaHora: string;
   sala: string;
-  notas?: string;
+  duracionMinutos?: number;
+  modalidad: Modalidad;
+  enlaceVirtual?: string;
+  observaciones?: string;
 }
 
 // ============================================================================

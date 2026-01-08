@@ -275,18 +275,28 @@ export function verificarPropiedadDocumento(documentoParamName: string = "docume
 
 /**
  * Middleware para verificar propiedad en rutas de audiencias
- * Valida que la audiencia pertenezca a una causa asignada al juez
+ * - JUEZ: Solo puede ver audiencias de causas asignadas a él
+ * - SECRETARIO: Solo puede gestionar audiencias de causas que él creó
  */
 export function verificarPropiedadAudiencia(audienciaParamName: string = "audienciaId") {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!req.user || req.user.rol !== "JUEZ") {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: "Usuario no autenticado",
+        });
+        return;
+      }
+
+      // ADMIN_CJ tiene acceso total
+      if (req.user.rol === "ADMIN_CJ") {
         next();
         return;
       }
 
       const audienciaId = parseInt(req.params[audienciaParamName]);
-      const juezTokenID = req.user.funcionarioId;
+      const usuarioId = req.user.funcionarioId;
 
       const client = await casesPool.connect();
       try {
@@ -296,8 +306,9 @@ export function verificarPropiedadAudiencia(audienciaParamName: string = "audien
             a.causa_id,
             c.numero_proceso,
             c.juez_asignado_id,
+            c.secretario_creador_id,
             a.tipo,
-            a.fecha_hora_programada
+            a.fecha_programada
            FROM audiencias a
            JOIN causas c ON a.causa_id = c.causa_id
            WHERE a.audiencia_id = $1`,
@@ -313,21 +324,32 @@ export function verificarPropiedadAudiencia(audienciaParamName: string = "audien
         }
 
         const audiencia = result.rows[0];
+        let tieneAcceso = false;
 
-        if (audiencia.juez_asignado_id !== juezTokenID) {
+        // JUEZ: Solo acceso si la causa está asignada a él
+        if (req.user.rol === "JUEZ") {
+          tieneAcceso = audiencia.juez_asignado_id === usuarioId;
+        }
+        // SECRETARIO: Solo acceso si él creó la causa
+        else if (req.user.rol === "SECRETARIO") {
+          tieneAcceso = audiencia.secretario_creador_id === usuarioId;
+        }
+
+        if (!tieneAcceso) {
           await auditService.log({
             tipoEvento: "ACCESO_DENEGADO",
-            usuarioId: juezTokenID,
+            usuarioId: usuarioId,
             usuarioCorreo: req.user.correo,
             moduloAfectado: "AUDIENCIAS",
-            descripcion: `[ALTA] Intento de acceso a audiencia no autorizada. Audiencia ${audienciaId} de causa ${audiencia.causa_id}`,
-
+            descripcion: `[ALTA] Intento de acceso a audiencia no autorizada. ${req.user.rol} ${usuarioId} intentó acceder a audiencia ${audienciaId}`,
             datosAfectados: {
               audienciaId,
               causaId: audiencia.causa_id,
               numeroProceso: audiencia.numero_proceso,
               juezAsignadoReal: audiencia.juez_asignado_id,
-              juezIntentandoAcceder: juezTokenID,
+              secretarioCreador: audiencia.secretario_creador_id,
+              usuarioIntentandoAcceder: usuarioId,
+              rolUsuario: req.user.rol,
             },
             ipOrigen: getClientIp(req),
             userAgent: getUserAgent(req),
@@ -351,6 +373,103 @@ export function verificarPropiedadAudiencia(audienciaParamName: string = "audien
       res.status(500).json({
         success: false,
         error: "Error al verificar permisos de acceso a la audiencia",
+      });
+    }
+  };
+}
+
+/**
+ * Middleware para verificar que un secretario puede gestionar audiencias de una causa
+ * Solo el secretario que creó la causa puede programar/reprogramar audiencias
+ */
+export function verificarSecretarioPropietarioCausa(causaParamName: string = "causaId") {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: "Usuario no autenticado",
+        });
+        return;
+      }
+
+      // ADMIN_CJ tiene acceso total
+      if (req.user.rol === "ADMIN_CJ") {
+        next();
+        return;
+      }
+
+      // Solo aplica a secretarios
+      if (req.user.rol !== "SECRETARIO") {
+        next();
+        return;
+      }
+
+      // Obtener causaId del body o params
+      const causaId = req.body.causaId || req.params[causaParamName];
+      if (!causaId) {
+        res.status(400).json({
+          success: false,
+          error: "ID de causa requerido",
+        });
+        return;
+      }
+
+      const secretarioId = req.user.funcionarioId;
+
+      const client = await casesPool.connect();
+      try {
+        const result = await client.query(
+          `SELECT causa_id, numero_proceso, secretario_creador_id, juez_asignado_id
+           FROM causas WHERE causa_id = $1`,
+          [causaId]
+        );
+
+        if (result.rows.length === 0) {
+          res.status(404).json({
+            success: false,
+            error: "Causa no encontrada",
+          });
+          return;
+        }
+
+        const causa = result.rows[0];
+
+        if (causa.secretario_creador_id !== secretarioId) {
+          await auditService.log({
+            tipoEvento: "ACCESO_DENEGADO",
+            usuarioId: secretarioId,
+            usuarioCorreo: req.user.correo,
+            moduloAfectado: "AUDIENCIAS",
+            descripcion: `[ALTA] Secretario ${secretarioId} intentó gestionar audiencia de causa que no creó (${causa.numero_proceso})`,
+            datosAfectados: {
+              causaId,
+              numeroProceso: causa.numero_proceso,
+              secretarioCreadorReal: causa.secretario_creador_id,
+              secretarioIntentandoAcceder: secretarioId,
+            },
+            ipOrigen: getClientIp(req),
+            userAgent: getUserAgent(req),
+          });
+
+          res.status(403).json({
+            success: false,
+            error: "Solo el secretario que creó esta causa puede gestionar sus audiencias",
+            code: "FORBIDDEN_RESOURCE",
+          });
+          return;
+        }
+
+        (req as any).causa = causa;
+        next();
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error("Error en verificación de secretario propietario:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al verificar permisos de acceso",
       });
     }
   };

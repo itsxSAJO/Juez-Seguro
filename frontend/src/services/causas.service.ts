@@ -283,4 +283,37 @@ export const causasService = {
     
     return [];
   },
+
+  /**
+   * Obtiene el historial de reprogramaciones de audiencias de una causa
+   * HU-SJ-003: Trazabilidad de audiencias en el expediente electrónico
+   */
+  async getHistorialReprogramaciones(causaId: string): Promise<HistorialReprogramacion[]> {
+    const response = await api.get<ApiResponse<HistorialReprogramacion[]>>(`/causas/${causaId}/historial-reprogramaciones`);
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    
+    return [];
+  },
 };
+
+// Interface para historial de reprogramaciones
+export interface HistorialReprogramacion {
+  historialId: number;
+  audienciaId: number;
+  tipoAudiencia?: string;
+  fechaHoraAnterior: string;
+  salaAnterior?: string;
+  fechaHoraNueva: string;
+  salaNueva?: string;
+  motivoReprogramacion: string;
+  tipoCambio: "REPROGRAMACION" | "CANCELACION" | "CAMBIO_SALA";
+  modificadoPorSecretarioId: number;
+  modificadoPorRol: string;
+  fechaModificacion: string;
+  ipModificacion?: string;
+  estadoAnterior?: string;
+  estadoNuevo?: string;
+}
