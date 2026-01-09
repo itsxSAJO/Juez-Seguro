@@ -101,7 +101,7 @@ class NotificacionesProcesalesService {
         tipo_notificacion,
         asunto,
         contenido,
-        medio_notificacion,
+        medio,
         estado,
         creado_por_id,
         ip_origen
@@ -145,15 +145,44 @@ class NotificacionesProcesalesService {
       userAgent: "sistema",
     });
 
-    // 6. Si se especificó tipo de actuación, crear plazo automático
-    if (input.tipoActuacionCodigo) {
-      await plazosService.crearPlazoDesdeActuacion(
-        input.causaId,
-        notificacion.notificacionId,
-        input.tipoActuacionCodigo,
-        usuario,
-        ipOrigen
-      );
+    // 6. Crear plazo automático basado en el tipo de notificación
+    // Mapeo de tipo de notificación a tipo_plazo válido para la BD
+    const mapeoNotificacionPlazo: Record<string, { tipoPlazo: string; dias: number; descripcion: string }> = {
+      citacion: { tipoPlazo: "comparecencia", dias: 3, descripcion: "Comparecencia a audiencia" },
+      emplazamiento: { tipoPlazo: "contestacion_demanda", dias: 15, descripcion: "Contestación a la demanda" },
+      auto: { tipoPlazo: "cumplimiento_auto", dias: 5, descripcion: "Cumplimiento de auto" },
+      providencia: { tipoPlazo: "cumplimiento_auto", dias: 5, descripcion: "Cumplimiento de providencia" },
+      sentencia: { tipoPlazo: "ejecucion_sentencia", dias: 5, descripcion: "Ejecución de sentencia" },
+      notificacion: { tipoPlazo: "subsanacion", dias: 3, descripcion: "Subsanación de requisitos" },
+    };
+
+    const plazoConfig = mapeoNotificacionPlazo[input.tipoNotificacion];
+    
+    console.log(`[PLAZO AUTO] Tipo notificación: ${input.tipoNotificacion}, Config: ${JSON.stringify(plazoConfig)}`);
+    
+    if (plazoConfig) {
+      try {
+        console.log(`[PLAZO AUTO] Creando plazo para causa ${input.causaId}, notificación ${notificacion.notificacionId}`);
+        await plazosService.crearPlazo(
+          {
+            causaId: input.causaId,
+            notificacionId: notificacion.notificacionId,
+            tipoPlazo: plazoConfig.tipoPlazo,
+            descripcion: plazoConfig.descripcion,
+            parteResponsable: input.destinatarioTipo === "actor" ? "actor" : 
+                              input.destinatarioTipo === "demandado" ? "demandado" : undefined,
+            diasPlazo: plazoConfig.dias,
+          },
+          usuario,
+          ipOrigen
+        );
+        console.log(`[PLAZO AUTO] Plazo creado exitosamente`);
+      } catch (error) {
+        // Log pero no fallar la notificación si el plazo no se puede crear
+        console.error(`[PLAZO AUTO] Error creando plazo para notificación ${notificacion.notificacionId}:`, error);
+      }
+    } else {
+      console.log(`[PLAZO AUTO] Sin plazo para tipo: ${input.tipoNotificacion}`);
     }
 
     return notificacion;
@@ -428,7 +457,7 @@ class NotificacionesProcesalesService {
       tipoNotificacion: row.tipo_notificacion as NotificacionProcesal["tipoNotificacion"],
       asunto: row.asunto as string,
       contenido: row.contenido as string | undefined,
-      medioNotificacion: row.medio_notificacion as NotificacionProcesal["medioNotificacion"],
+      medioNotificacion: row.medio as NotificacionProcesal["medioNotificacion"],
       estado: row.estado as EstadoNotificacionProcesal,
       fechaCreacion: row.fecha_creacion as Date,
       fechaEnvio: row.fecha_envio as Date | undefined,

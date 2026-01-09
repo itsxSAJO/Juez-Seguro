@@ -19,14 +19,14 @@ const crearNotificacionSchema = z.object({
   causaId: z.number().int().positive(),
   decisionId: z.number().int().positive(), // OBLIGATORIO: No notificaciones huérfanas
   tipoNotificacion: z.enum([
-    "CITACION",
-    "TRASLADO",
-    "AUTO",
-    "PROVIDENCIA",
-    "SENTENCIA",
-    "REQUERIMIENTO",
-    "BOLETA",
-    "DEPOSITO_JUDICIAL",
+    "citacion",
+    "notificacion",
+    "emplazamiento",
+    "auto",
+    "providencia",
+    "sentencia",
+    "recordatorio",
+    "otro",
   ]),
   destinatarioTipo: z.enum([
     "actor",
@@ -44,7 +44,14 @@ const crearNotificacionSchema = z.object({
   destinatarioCasillero: z.string().optional(),
   asunto: z.string().min(5).max(500),
   contenido: z.string().optional(),
-  medioNotificacion: z.enum(["ELECTRONICO", "CASILLERO", "PERSONAL", "BOLETA"]),
+  medioNotificacion: z.enum([
+    "BUZON_ELECTRONICO", 
+    "CORREO_ELECTRONICO", 
+    "FISICO", 
+    "CASILLERO_JUDICIAL", 
+    "PUBLICACION", 
+    "DEPRECATORIO"
+  ]),
   tipoActuacionCodigo: z.string().optional(), // Para crear plazo automático
 });
 

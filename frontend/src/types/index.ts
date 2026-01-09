@@ -50,7 +50,9 @@ export interface Causa {
   unidadJudicial: string;
   // Partes procesales (información pública - sin pseudonimizar)
   actorNombre: string;
+  actorIdentificacion?: string;
   demandadoNombre: string;
+  demandadoIdentificacion?: string;
   // Funcionarios (pseudonimizados para protección de identidad)
   juezAsignadoId: string;
   juezAsignadoNombre: string; // Pseudónimo del juez

@@ -31,10 +31,8 @@ class PlazosService {
         dia_id,
         fecha,
         descripcion,
-        es_recurrente,
-        activo
+        tipo
       FROM dias_inhabiles
-      WHERE activo = true
       ORDER BY fecha
     `;
 
@@ -43,8 +41,9 @@ class PlazosService {
       diaId: row.dia_id,
       fecha: row.fecha,
       descripcion: row.descripcion,
-      esRecurrente: row.es_recurrente,
-      activo: row.activo,
+      tipo: row.tipo,
+      esRecurrente: false, // No existe en la BD, default false
+      activo: true, // No existe en la BD, todos están activos
     }));
   }
 
@@ -329,11 +328,14 @@ class PlazosService {
       await this.obtenerTipoActuacionPorCodigo(codigoActuacion);
     if (!tipoActuacion) return null;
 
+    // Convertir código a minúsculas para cumplir con constraint de la BD
+    const tipoPlazoLower = tipoActuacion.codigo.toLowerCase();
+
     return this.crearPlazo(
       {
         causaId,
         notificacionId,
-        tipoPlazo: tipoActuacion.codigo,
+        tipoPlazo: tipoPlazoLower,
         descripcion: tipoActuacion.nombre,
         parteResponsable:
           (tipoActuacion.parteResponsableDefault as CrearPlazoInput["parteResponsable"]) ||

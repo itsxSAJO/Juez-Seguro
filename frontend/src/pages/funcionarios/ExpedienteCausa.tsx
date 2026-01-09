@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getCausaById, getDocumentos, Causa, Documento } from "@/lib/funcionarios-data";
 import { audienciasService, AudienciaConHistorial } from "@/services/audiencias.service";
 import { causasService, HistorialReprogramacion } from "@/services/causas.service";
+import { notificacionesProcesalesService, NotificacionProcesal } from "@/services/notificaciones-procesales.service";
 import {
   ArrowLeft,
   FileText,
@@ -39,7 +40,7 @@ import { es } from "date-fns/locale";
 
 interface Actuacion {
   id: string;
-  tipo: "escrito" | "providencia" | "auto" | "sentencia" | "audiencia" | "notificacion" | "reprogramacion";
+  tipo: "escrito" | "providencia" | "auto" | "sentencia" | "audiencia" | "notificacion" | "reprogramacion" | "notificacion_procesal";
   titulo: string;
   fecha: string;
   descripcion: string;
@@ -55,6 +56,7 @@ const ExpedienteCausa = () => {
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [audiencias, setAudiencias] = useState<AudienciaConHistorial[]>([]);
   const [historialReprogramaciones, setHistorialReprogramaciones] = useState<HistorialReprogramacion[]>([]);
+  const [notificacionesProcesales, setNotificacionesProcesales] = useState<NotificacionProcesal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchActuacion, setSearchActuacion] = useState("");
   const [filtroTipoActuacion, setFiltroTipoActuacion] = useState<string>("todos");
@@ -75,11 +77,12 @@ const ExpedienteCausa = () => {
       setLoading(true);
       try {
         // Cargar datos en paralelo con manejo de errores individual
-        const [causaResult, docsResult, audResult, historialResult] = await Promise.allSettled([
+        const [causaResult, docsResult, audResult, historialResult, notifProcResult] = await Promise.allSettled([
           getCausaById(id),
           getDocumentos(id),
           audienciasService.getAudiencias({ causaId: id }),
           causasService.getHistorialReprogramaciones(id),
+          notificacionesProcesalesService.listarPorCausa(parseInt(id)),
         ]);
         
         // Procesar resultado de causa
@@ -112,6 +115,14 @@ const ExpedienteCausa = () => {
         } else {
           console.warn("No se pudieron cargar reprogramaciones:", historialResult.status === 'rejected' ? historialResult.reason : 'No data');
           setHistorialReprogramaciones([]);
+        }
+
+        // HU-SJ-004: Procesar resultado de notificaciones procesales
+        if (notifProcResult.status === 'fulfilled' && notifProcResult.value) {
+          setNotificacionesProcesales(notifProcResult.value);
+        } else {
+          console.warn("No se pudieron cargar notificaciones procesales:", notifProcResult.status === 'rejected' ? notifProcResult.reason : 'No data');
+          setNotificacionesProcesales([]);
         }
       } catch (error) {
         console.error("Error general cargando datos:", error);
@@ -163,6 +174,20 @@ const ExpedienteCausa = () => {
         fecha: rep.fechaModificacion, // Fecha de cuando se reprogramó
         descripcion: `De: ${fechaAnterior} → A: ${fechaNueva}. Motivo: ${rep.motivoReprogramacion?.split('\n')[0] || 'Sin motivo especificado'}`,
         autor: "Secretario",
+      };
+    }),
+    // HU-SJ-004: Agregar notificaciones procesales a la línea del tiempo
+    ...notificacionesProcesales.map((notif) => {
+      const estadoBadge = notif.estado === 'ENTREGADA' ? '✅' : 
+                          notif.estado === 'ENVIADA' ? '📨' : 
+                          notif.estado === 'FALLIDA' ? '❌' : '⏳';
+      return {
+        id: `notif-proc-${notif.notificacionId}`,
+        tipo: "notificacion_procesal" as const,
+        titulo: `${estadoBadge} Notificación: ${notif.tipoNotificacion}`,
+        fecha: notif.fechaCreacion,
+        descripcion: `${notif.asunto} - Destinatario: ${notif.destinatarioNombre} (${notif.destinatarioTipo}) - Estado: ${notif.estado}`,
+        autor: notif.creadoPorNombre || "Secretario",
       };
     }),
   ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
@@ -354,6 +379,8 @@ const ExpedienteCausa = () => {
         return <Calendar className="w-4 h-4" />;
       case "notificacion":
         return <Bell className="w-4 h-4" />;
+      case "notificacion_procesal":
+        return <Bell className="w-4 h-4" />;
       case "reprogramacion":
         return <RefreshCw className="w-4 h-4" />;
       default:
@@ -375,6 +402,8 @@ const ExpedienteCausa = () => {
         return "bg-warning/20 text-warning border-warning/30";
       case "notificacion":
         return "bg-secondary/20 text-secondary-foreground border-secondary/30";
+      case "notificacion_procesal":
+        return "bg-purple-500/20 text-purple-600 border-purple-500/30";
       case "reprogramacion":
         return "bg-orange-500/20 text-orange-600 border-orange-500/30";
       default:
@@ -581,7 +610,8 @@ const ExpedienteCausa = () => {
                   <SelectItem value="sentencia">Sentencias</SelectItem>
                   <SelectItem value="audiencia">Audiencias</SelectItem>
                   <SelectItem value="reprogramacion">Reprogramaciones</SelectItem>
-                  <SelectItem value="notificacion">Notificaciones</SelectItem>
+                  <SelectItem value="notificacion">Notificaciones Internas</SelectItem>
+                  <SelectItem value="notificacion_procesal">Notificaciones Procesales</SelectItem>
                 </SelectContent>
               </Select>
             </div>

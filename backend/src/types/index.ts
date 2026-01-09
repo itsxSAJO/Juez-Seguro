@@ -110,7 +110,9 @@ export interface Causa {
   descripcion?: string;
   // Partes procesales (información pública, sin pseudonimizar)
   actor_nombre?: string;
+  actor_identificacion?: string;
   demandado_nombre?: string;
+  demandado_identificacion?: string;
 }
 
 // Vista pública de causa (para ciudadanos)
@@ -126,7 +128,9 @@ export interface CausaPublica {
   descripcion?: string;
   // Partes procesales (información pública)
   actorNombre?: string;
+  actorIdentificacion?: string;
   demandadoNombre?: string;
+  demandadoIdentificacion?: string;
   // Funcionario que registró (pseudonimizado)
   secretarioPseudonimo?: string;
 }
