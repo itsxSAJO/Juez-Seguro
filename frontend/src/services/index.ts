@@ -28,3 +28,17 @@ export { auditoriaService } from "./auditoria.service";
 export type { FiltrosAuditoriaExtendidos, EstadisticasAuditoria } from "./auditoria.service";
 
 export { consultaCiudadanaService } from "./consulta-ciudadana.service";
+
+// Sprint 3 - HU-JZ-003: Decisiones y Firmas
+export { decisionesService } from "./decisiones.service";
+export type { 
+  DecisionJudicial, 
+  TipoDecision, 
+  EstadoDecision, 
+  CrearDecisionRequest,
+  ActualizarDecisionRequest,
+  FirmaResult,
+  VerificacionFirma,
+  HistorialDecision,
+  FiltrosDecisiones 
+} from "./decisiones.service";

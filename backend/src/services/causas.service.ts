@@ -697,7 +697,9 @@ class CausasService {
       descripcion: c.descripcion,
       // Partes procesales: información pública (nombres reales)
       actorNombre: c.actor_nombre,
+      actorIdentificacion: c.actor_identificacion,
       demandadoNombre: c.demandado_nombre,
+      demandadoIdentificacion: c.demandado_identificacion,
       // Funcionario que registró: pseudónimo
       secretarioPseudonimo: c.secretario_pseudonimo,
     };

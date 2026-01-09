@@ -77,7 +77,7 @@ router.get(
       
       // ADMIN_CJ ve todas las causas (sin filtro adicional)
 
-      const resultado = await causasService.getCausas(filtros);
+      const resultado = await causasService.getCausasPublicas(filtros);
 
       await auditService.log({
         tipoEvento: "CONSULTA_CAUSAS",

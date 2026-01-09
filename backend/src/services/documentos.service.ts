@@ -299,11 +299,11 @@ class DocumentosService {
     const usersClient = await usersPool.connect();
 
     try {
-      // 1. Obtener documentos de la causa
+      // 1. Obtener documentos de la causa (incluyendo firmados)
       const docsResult = await casesClient.query(
         `SELECT *
          FROM documentos
-         WHERE causa_id = $1 AND estado = 'activo'
+         WHERE causa_id = $1 AND estado IN ('activo', 'firmado')
          ORDER BY fecha_subida DESC`,
         [causaId]
       );
@@ -326,9 +326,13 @@ class DocumentosService {
         }, {} as Record<number, string>);
       }
 
-      // 4. Mapear documentos con pseudónimos de secretarios
+      // 4. Mapear documentos con pseudónimos de secretarios o jueces
       return docsResult.rows.map(row => {
-        const pseudonimo = funcionariosMap[row.subido_por_id] || `SECRETARIO-${String(row.subido_por_id).padStart(4, '0')}`;
+        // Priorizar subido_por_nombre si existe (usado para documentos firmados por jueces)
+        // Sino usar el mapa de funcionarios o generar pseudónimo de secretario
+        const pseudonimo = row.subido_por_nombre || 
+          funcionariosMap[row.subido_por_id] || 
+          `SECRETARIO-${String(row.subido_por_id).padStart(4, '0')}`;
         return {
           ...this.mapearDocumento(row),
           subidoPor: pseudonimo,

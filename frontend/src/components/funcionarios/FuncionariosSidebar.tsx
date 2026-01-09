@@ -12,6 +12,7 @@ import {
   Scale,
   ChevronLeft,
   ChevronRight,
+  Timer,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -101,9 +102,16 @@ const navItems: NavItem[] = [
     icon: Bell, 
     label: "Notificaciones", 
     href: "/funcionarios/notificaciones",
-    roles: ["secretario"],
+    roles: ["juez", "secretario"],
     badge: 3,
     description: "Gestión de notificaciones judiciales"
+  },
+  { 
+    icon: Timer, 
+    label: "Notif. Procesales", 
+    href: "/funcionarios/notificaciones-procesales",
+    roles: ["juez", "secretario"],
+    description: "Notificaciones y plazos procesales (HU-SJ-004)"
   },
   // ============ JUEZ ============
   { 

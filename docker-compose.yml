@@ -97,6 +97,7 @@ services:
   # ----------------------------------------------------------------
   # 4. BACKEND API - Servidor de Aplicación Node.js/TypeScript
   # Maneja la lógica de negocio y el almacenamiento seguro de documentos
+  # Sprint 3: Integración PKI para firma electrónica
   # ----------------------------------------------------------------
   backend_api:
     build:
@@ -133,8 +134,39 @@ services:
       
       # Ruta de almacenamiento seguro para documentos
       SECURE_STORAGE_PATH: /app/storage/expedientes_seguros
+      
+      # ============================================================
+      # Sprint 3: Configuración PKI para Firma Electrónica
+      # ============================================================
+      # Rutas de certificados (montados como solo lectura)
+      PKI_CA_CERT_PATH: /app/certs/ca/ca.crt
+      PKI_JUECES_CERTS_PATH: /app/certs/jueces
+      
+      # Password para archivos PFX (En producción usar Docker Secrets o Vault)
+      PFX_PASSWORD: ${PFX_PASSWORD:-Seguridad2026}
+      
+      # Ruta del secreto JWT desde archivo
+      JWT_SECRET_FILE: /app/certs/jwt_secret.key
+      
+      # Ruta de almacenamiento WORM para decisiones firmadas
+      DECISIONES_FIRMADAS_PATH: /app/storage/decisiones_firmadas
+      
+      # Salt para anonimización
+      ANONYMIZATION_SALT_FILE: /app/certs/anonymization.salt
+      
     volumes:
+      # Almacenamiento de expedientes (existente)
       - secure_docs_storage:/app/storage/expedientes_seguros
+      
+      # Sprint 3: Infraestructura PKI (Solo lectura)
+      - ./certs/ca:/app/certs/ca:ro
+      - ./certs/jueces:/app/certs/jueces:ro
+      - ./certs/jwt_secret.key:/app/certs/jwt_secret.key:ro
+      - ./certs/anonymization.salt:/app/certs/anonymization.salt:ro
+      
+      # Sprint 3: Almacenamiento WORM para decisiones firmadas
+      - secure_decisions_storage:/app/storage/decisiones_firmadas
+      
     networks:
       - backend_secure_net
     depends_on:
@@ -198,3 +230,10 @@ volumes:
     # Volumen persistente para almacenamiento WORM (Write Once Read Many)
     # Contiene PDFs y documentos del expediente electrónico
     # La integridad se garantiza mediante hashes en db_casos
+  
+  # Sprint 3: Volumen WORM para decisiones judiciales firmadas
+  secure_decisions_storage:
+    name: juez_seguro_decisions_firmadas
+    # Almacenamiento inmutable para autos, providencias y sentencias firmadas
+    # Los documentos aquí almacenados no pueden ser modificados ni eliminados
+    # Integridad verificada mediante hash SHA-256 en tabla decisiones_judiciales

@@ -27,6 +27,7 @@ import GestionDocumentos from "./pages/funcionarios/GestionDocumentos";
 import AgendaAudiencias from "./pages/funcionarios/AgendaAudiencias";
 import EditorDecisiones from "./pages/funcionarios/EditorDecisiones";
 import GestionNotificaciones from "./pages/funcionarios/GestionNotificaciones";
+import GestionNotificacionesProcesales from "./pages/funcionarios/GestionNotificacionesProcesales";
 import CentroAuditoria from "./pages/funcionarios/CentroAuditoria";
 
 const queryClient = new QueryClient();
@@ -122,8 +123,16 @@ const App = () => (
             <Route
               path="/funcionarios/notificaciones"
               element={
-                <ProtectedRoute allowedRoles={["secretario"]}>
+                <ProtectedRoute allowedRoles={["juez", "secretario"]}>
                   <GestionNotificaciones />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionarios/notificaciones-procesales"
+              element={
+                <ProtectedRoute allowedRoles={["juez", "secretario"]}>
+                  <GestionNotificacionesProcesales />
                 </ProtectedRoute>
               }
             />

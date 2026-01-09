@@ -63,7 +63,9 @@ interface CausaBackend {
   estadoProcesal?: string;
   fechaCreacion?: string;
   actorNombre?: string;
+  actorIdentificacion?: string;
   demandadoNombre?: string;
+  demandadoIdentificacion?: string;
   secretarioPseudonimo?: string;
   // snake_case (desde raw query)
   causa_id?: number;
@@ -74,7 +76,9 @@ interface CausaBackend {
   estado_procesal?: string;
   fecha_creacion?: string;
   actor_nombre?: string;
+  actor_identificacion?: string;
   demandado_nombre?: string;
+  demandado_identificacion?: string;
   secretario_pseudonimo?: string;
   // Campos comunes
   materia?: string;
@@ -106,7 +110,9 @@ function mapearCausa(causaBackend: CausaBackend): Causa {
   const estadoProcesal = causaBackend.estadoProcesal ?? causaBackend.estado_procesal ?? "INICIADA";
   const fechaCreacion = causaBackend.fechaCreacion ?? causaBackend.fecha_creacion ?? new Date().toISOString();
   const actorNombre = causaBackend.actorNombre ?? causaBackend.actor_nombre ?? "Actor no especificado";
+  const actorIdentificacion = causaBackend.actorIdentificacion ?? causaBackend.actor_identificacion ?? "";
   const demandadoNombre = causaBackend.demandadoNombre ?? causaBackend.demandado_nombre ?? "Demandado no especificado";
+  const demandadoIdentificacion = causaBackend.demandadoIdentificacion ?? causaBackend.demandado_identificacion ?? "";
   const secretarioPseudonimo = causaBackend.secretarioPseudonimo ?? causaBackend.secretario_pseudonimo ?? "Secretario";
 
   return {
@@ -117,7 +123,9 @@ function mapearCausa(causaBackend: CausaBackend): Causa {
     unidadJudicial: unidadJudicial,
     // Partes procesales: nombres reales (información pública)
     actorNombre: actorNombre,
+    actorIdentificacion: actorIdentificacion,
     demandadoNombre: demandadoNombre,
+    demandadoIdentificacion: demandadoIdentificacion,
     // Funcionarios: pseudónimos (protección de identidad)
     juezAsignadoId: id.toString(),
     juezAsignadoNombre: juezPseudonimo,

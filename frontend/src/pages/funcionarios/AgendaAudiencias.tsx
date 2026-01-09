@@ -890,11 +890,15 @@ const AgendaAudiencias = () => {
                         {cambio.tipoCambio || "Reprogramación"}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {format(new Date(cambio.fecha), "dd/MM/yyyy HH:mm", { locale: es })}
+                        {cambio.fecha && !isNaN(new Date(cambio.fecha).getTime()) 
+                          ? format(new Date(cambio.fecha), "dd/MM/yyyy HH:mm", { locale: es })
+                          : "Fecha no disponible"}
                       </span>
                     </div>
                     <div className="space-y-2 text-sm">
-                      {cambio.fechaHoraAnterior && cambio.fechaHoraNueva && (
+                      {cambio.fechaHoraAnterior && cambio.fechaHoraNueva && 
+                       !isNaN(new Date(cambio.fechaHoraAnterior).getTime()) && 
+                       !isNaN(new Date(cambio.fechaHoraNueva).getTime()) && (
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground">Cambio:</span>
                           <span className="line-through text-destructive">

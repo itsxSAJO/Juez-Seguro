@@ -10,6 +10,7 @@ import crypto from "crypto";
 import { auditService } from "./audit.service.js";
 import { pseudonimosService } from "./pseudonimos.service.js";
 import { emailService } from "./email.service.js";
+import { pkiService } from "./pki.service.js";
 import type { Funcionario, FuncionarioPublico, UserRole, EstadoCuenta, Rol } from "../types/index.js";
 
 // Constante para identificar el rol de JUEZ
@@ -145,25 +146,49 @@ class FuncionariosService {
       // EVENTO CRÍTICO: Si el rol es JUEZ, generar pseudónimo inmediatamente
       // Esto garantiza que el pseudónimo exista ANTES de asignar cualquier causa
       let pseudonimoGenerado: string | null = null;
+      let certificadoGenerado: boolean = false;
+      
       if (input.rolId === ROL_JUEZ_ID) {
+        // 1. Generar pseudónimo
         pseudonimoGenerado = await pseudonimosService.crearPseudonimoJuez(
           funcionario.funcionario_id,
           adminId,
           ip,
           userAgent
         );
+
+        // 2. Generar certificado PKI para firma electrónica
+        try {
+          const resultadoPKI = await pkiService.generarCertificadoJuez({
+            juezId: funcionario.funcionario_id,
+            nombreCompleto: input.nombresCompletos,
+            correo: input.correoInstitucional.toLowerCase(),
+          });
+          
+          certificadoGenerado = resultadoPKI.exito;
+          
+          if (resultadoPKI.exito) {
+            console.log(`[USUARIOS] Certificado PKI generado para juez ${funcionario.funcionario_id}`);
+          } else {
+            console.warn(`[USUARIOS] ⚠️ No se pudo generar certificado PKI: ${resultadoPKI.mensaje}`);
+          }
+        } catch (pkiError) {
+          console.error("[USUARIOS] Error al generar certificado PKI:", pkiError);
+          // No fallar el registro si falla el certificado - se puede generar después
+        }
       }
 
       await auditService.log({
         tipoEvento: "CREACION_USUARIO",
         usuarioId: adminId,
         moduloAfectado: "ADMIN",
-        descripcion: `Funcionario creado: ${input.identificacion} - ${input.nombresCompletos}${pseudonimoGenerado ? " (pseudónimo generado)" : ""}`,
+        descripcion: `Funcionario creado: ${input.identificacion} - ${input.nombresCompletos}${pseudonimoGenerado ? " (pseudónimo generado)" : ""}${certificadoGenerado ? " (certificado PKI generado)" : ""}`,
         datosAfectados: { 
           funcionarioId: funcionario.funcionario_id, 
           identificacion: input.identificacion,
           rolId: input.rolId,
-          pseudonimoGenerado: pseudonimoGenerado !== null
+          pseudonimoGenerado: pseudonimoGenerado !== null,
+          certificadoGenerado: certificadoGenerado
         },
         ipOrigen: ip,
         userAgent,
