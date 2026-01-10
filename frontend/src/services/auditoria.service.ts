@@ -1,12 +1,17 @@
 // ============================================================================
 // JUEZ SEGURO - Servicio de Auditoría
 // Consulta de logs de auditoría (solo CJ)
+// HU-CJ-003: Revisión de registros de actividad
 // ============================================================================
 
 import { api, ApiResponse, PaginatedResponse } from "./api";
 import type { LogAuditoria, FiltrosAuditoria, ResultadoAuditoria } from "@/types";
 
 export interface FiltrosAuditoriaExtendidos extends FiltrosAuditoria {
+  usuarioCorreo?: string;
+  tipoEvento?: string;
+  moduloAfectado?: string;
+  causaReferencia?: string;
   page?: number;
   pageSize?: number;
 }
@@ -19,17 +24,26 @@ export interface EstadisticasAuditoria {
   alertasSeguridad: number;
 }
 
+export interface ResultadoVerificacionCadena {
+  totalRegistros: number;
+  registrosValidos: number;
+  registrosRotos: number;
+  primerErrorId: number | null;
+  integridadOk: boolean;
+}
+
 export const auditoriaService = {
   /**
-   * Obtiene logs de auditoría con filtros
+   * Obtiene logs de auditoría con filtros y paginación
    */
   async getLogs(filtros?: FiltrosAuditoriaExtendidos): Promise<PaginatedResponse<LogAuditoria>> {
     const params: Record<string, string> = {};
     
     if (filtros) {
-      if (filtros.usuario) params.usuario = filtros.usuario;
-      if (filtros.modulo) params.modulo = filtros.modulo;
-      if (filtros.resultado) params.resultado = filtros.resultado;
+      if (filtros.usuarioCorreo) params.usuarioCorreo = filtros.usuarioCorreo;
+      if (filtros.tipoEvento) params.tipoEvento = filtros.tipoEvento;
+      if (filtros.moduloAfectado) params.moduloAfectado = filtros.moduloAfectado;
+      if (filtros.causaReferencia) params.causaReferencia = filtros.causaReferencia;
       if (filtros.fechaDesde) params.fechaDesde = filtros.fechaDesde;
       if (filtros.fechaHasta) params.fechaHasta = filtros.fechaHasta;
       if (filtros.page) params.page = filtros.page.toString();
@@ -110,13 +124,13 @@ export const auditoriaService = {
   /**
    * Exporta logs de auditoría en formato CSV
    */
-  async exportarLogs(filtros?: FiltrosAuditoria): Promise<Blob> {
-    const params: Record<string, string> = { formato: "csv" };
+  async exportarLogs(filtros?: FiltrosAuditoriaExtendidos): Promise<Blob> {
+    const params: Record<string, string> = {};
     
     if (filtros) {
-      if (filtros.usuario) params.usuario = filtros.usuario;
-      if (filtros.modulo) params.modulo = filtros.modulo;
-      if (filtros.resultado) params.resultado = filtros.resultado;
+      if (filtros.usuarioCorreo) params.usuarioCorreo = filtros.usuarioCorreo;
+      if (filtros.tipoEvento) params.tipoEvento = filtros.tipoEvento;
+      if (filtros.moduloAfectado) params.moduloAfectado = filtros.moduloAfectado;
       if (filtros.fechaDesde) params.fechaDesde = filtros.fechaDesde;
       if (filtros.fechaHasta) params.fechaHasta = filtros.fechaHasta;
     }
@@ -145,6 +159,19 @@ export const auditoriaService = {
   },
 
   /**
+   * Obtiene tipos de evento disponibles
+   */
+  async getTiposEvento(): Promise<string[]> {
+    const response = await api.get<ApiResponse<string[]>>("/auditoria/tipos-evento");
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    
+    return [];
+  },
+
+  /**
    * Obtiene módulos disponibles para filtrar
    */
   async getModulos(): Promise<string[]> {
@@ -155,5 +182,71 @@ export const auditoriaService = {
     }
     
     return [];
+  },
+
+  /**
+   * Obtiene usuarios que aparecen en los logs de auditoría
+   */
+  async getUsuariosEnLogs(): Promise<string[]> {
+    const response = await api.get<ApiResponse<string[]>>("/auditoria/usuarios");
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    
+    return [];
+  },
+
+  /**
+   * Verifica la integridad de la cadena de hashes
+   */
+  async verificarCadena(fechaDesde?: string, fechaHasta?: string): Promise<ResultadoVerificacionCadena> {
+    const params: Record<string, string> = {};
+    if (fechaDesde) params.fechaDesde = fechaDesde;
+    if (fechaHasta) params.fechaHasta = fechaHasta;
+    
+    const response = await api.get<ApiResponse<ResultadoVerificacionCadena>>(
+      "/auditoria/verificar-cadena",
+      params
+    );
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    
+    throw new Error("Error al verificar integridad");
+  },
+
+  /**
+   * Obtiene estadísticas globales de auditoría
+   */
+  async getEstadisticasGlobales(filtros?: FiltrosAuditoriaExtendidos): Promise<{
+    total: number;
+    exitosas: number;
+    errores: number;
+    denegadas: number;
+  }> {
+    const params: Record<string, string> = {};
+    
+    if (filtros) {
+      if (filtros.usuarioCorreo) params.usuarioCorreo = filtros.usuarioCorreo;
+      if (filtros.tipoEvento) params.tipoEvento = filtros.tipoEvento;
+      if (filtros.moduloAfectado) params.moduloAfectado = filtros.moduloAfectado;
+      if (filtros.fechaDesde) params.fechaDesde = filtros.fechaDesde;
+      if (filtros.fechaHasta) params.fechaHasta = filtros.fechaHasta;
+    }
+    
+    const response = await api.get<ApiResponse<{
+      total: number;
+      exitosas: number;
+      errores: number;
+      denegadas: number;
+    }>>("/auditoria/estadisticas", params);
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    
+    return { total: 0, exitosas: 0, errores: 0, denegadas: 0 };
   },
 };

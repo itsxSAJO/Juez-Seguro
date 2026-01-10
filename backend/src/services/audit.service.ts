@@ -23,21 +23,49 @@ interface LogEventInput {
 
 interface FiltrosLogs {
   usuarioId?: number;
+  usuarioCorreo?: string;
   tipoEvento?: TipoEventoAuditoria;
   moduloAfectado?: ModuloAfectado;
+  causaReferencia?: string;
   fechaDesde?: Date;
   fechaHasta?: Date;
   page?: number;
   pageSize?: number;
 }
 
+interface ExportOptions {
+  filtros: FiltrosLogs;
+  formato: "csv" | "json";
+}
+
 /**
  * Servicio de Auditoría - FAU (Functional Audit)
- * Implementa logging inmutable con hash de integridad
+ * Implementa logging inmutable con hash de integridad y encadenamiento
  */
 class AuditService {
   /**
-   * Registra un evento de auditoría con hash de integridad
+   * Obtiene el hash del último registro para encadenamiento
+   */
+  private async getUltimoHash(client: any): Promise<string | null> {
+    const result = await client.query(
+      `SELECT hash_evento FROM logs_auditoria ORDER BY log_id DESC LIMIT 1`
+    );
+    return result.rows.length > 0 ? result.rows[0].hash_evento : null;
+  }
+
+  /**
+   * Extrae la referencia de causa de los datos del evento
+   */
+  private extraerCausaReferencia(datos: Record<string, unknown> | null): string | null {
+    if (!datos) return null;
+    return (datos.causaId as string) || 
+           (datos.numeroProceso as string) || 
+           (datos.causa_id as string) || 
+           null;
+  }
+
+  /**
+   * Registra un evento de auditoría con hash de integridad y encadenamiento
    */
   async log(event: LogEventInput): Promise<number> {
     const client = await logsPool.connect();
@@ -45,21 +73,29 @@ class AuditService {
     try {
       const fechaEvento = new Date();
 
-      // Crear hash del evento para integridad (SHA-256)
+      // Obtener hash del último registro para encadenamiento
+      const hashAnterior = await this.getUltimoHash(client);
+
+      // Crear hash del evento incluyendo el hash anterior (encadenamiento)
       const hashData = JSON.stringify({
         ...event,
         fechaEvento: fechaEvento.toISOString(),
         timestamp: Date.now(),
+        hashAnterior: hashAnterior,
       });
       const hashEvento = crypto.createHash("sha256").update(hashData).digest("hex");
 
-      // Insertar en la base de datos (usar datosAfectados o detalles)
+      // Extraer datos y causa_referencia
       const datos = event.datosAfectados || event.detalles || null;
+      const causaReferencia = this.extraerCausaReferencia(datos);
+
+      // Insertar en la base de datos con encadenamiento
       const result = await client.query(
         `INSERT INTO logs_auditoria (
           fecha_evento, usuario_id, usuario_correo, rol_usuario, ip_origen,
-          tipo_evento, modulo_afectado, descripcion_evento, datos_afectados, hash_evento
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          tipo_evento, modulo_afectado, descripcion_evento, datos_afectados, 
+          hash_evento, hash_anterior, causa_referencia
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING log_id`,
         [
           fechaEvento,
@@ -72,6 +108,8 @@ class AuditService {
           event.descripcion || null,
           datos ? JSON.stringify(datos) : null,
           hashEvento,
+          hashAnterior,
+          causaReferencia,
         ]
       );
 
@@ -157,6 +195,13 @@ class AuditService {
         paramIndex++;
       }
 
+      // Nuevo filtro por correo de usuario
+      if (filtros.usuarioCorreo) {
+        conditions.push(`usuario_correo = $${paramIndex}`);
+        params.push(filtros.usuarioCorreo);
+        paramIndex++;
+      }
+
       if (filtros.tipoEvento) {
         conditions.push(`tipo_evento = $${paramIndex}`);
         params.push(filtros.tipoEvento);
@@ -166,6 +211,13 @@ class AuditService {
       if (filtros.moduloAfectado) {
         conditions.push(`modulo_afectado = $${paramIndex}`);
         params.push(filtros.moduloAfectado);
+        paramIndex++;
+      }
+
+      // Nuevo filtro por causa
+      if (filtros.causaReferencia) {
+        conditions.push(`causa_referencia = $${paramIndex}`);
+        params.push(filtros.causaReferencia);
         paramIndex++;
       }
 
@@ -324,6 +376,280 @@ class AuditService {
       ip,
       userAgent
     );
+  }
+
+  /**
+   * Exporta logs a formato CSV
+   */
+  async exportarCSV(filtros: FiltrosLogs): Promise<string> {
+    const client = await logsPool.connect();
+
+    try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      let paramIndex = 1;
+
+      if (filtros.usuarioCorreo) {
+        conditions.push(`usuario_correo = $${paramIndex}`);
+        params.push(filtros.usuarioCorreo);
+        paramIndex++;
+      }
+
+      if (filtros.tipoEvento) {
+        conditions.push(`tipo_evento = $${paramIndex}`);
+        params.push(filtros.tipoEvento);
+        paramIndex++;
+      }
+
+      if (filtros.moduloAfectado) {
+        conditions.push(`modulo_afectado = $${paramIndex}`);
+        params.push(filtros.moduloAfectado);
+        paramIndex++;
+      }
+
+      if (filtros.fechaDesde) {
+        conditions.push(`fecha_evento >= $${paramIndex}`);
+        params.push(filtros.fechaDesde);
+        paramIndex++;
+      }
+
+      if (filtros.fechaHasta) {
+        conditions.push(`fecha_evento <= $${paramIndex}`);
+        params.push(filtros.fechaHasta);
+        paramIndex++;
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      // Obtener todos los logs filtrados (sin paginación para exportación)
+      const result = await client.query(
+        `SELECT 
+          log_id,
+          fecha_evento,
+          usuario_correo,
+          rol_usuario,
+          tipo_evento,
+          modulo_afectado,
+          descripcion_evento,
+          causa_referencia,
+          ip_origen
+        FROM logs_auditoria ${whereClause}
+        ORDER BY fecha_evento DESC
+        LIMIT 10000`,
+        params
+      );
+
+      // Generar CSV
+      const headers = [
+        "ID",
+        "Fecha/Hora",
+        "Usuario",
+        "Rol",
+        "Tipo Evento",
+        "Módulo",
+        "Descripción",
+        "Causa",
+        "IP Origen"
+      ];
+
+      const csvRows = [headers.join(",")];
+
+      for (const row of result.rows) {
+        const csvRow = [
+          row.log_id,
+          new Date(row.fecha_evento).toISOString(),
+          `"${row.usuario_correo || "Sistema"}"`,
+          `"${row.rol_usuario || ""}"`,
+          `"${row.tipo_evento}"`,
+          `"${row.modulo_afectado || ""}"`,
+          `"${(row.descripcion_evento || "").replace(/"/g, '""')}"`,
+          `"${row.causa_referencia || ""}"`,
+          row.ip_origen || ""
+        ];
+        csvRows.push(csvRow.join(","));
+      }
+
+      return csvRows.join("\n");
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Verifica integridad de la cadena de hashes
+   */
+  async verificarCadenaIntegridad(
+    fechaDesde?: Date,
+    fechaHasta?: Date
+  ): Promise<{
+    totalRegistros: number;
+    registrosValidos: number;
+    registrosRotos: number;
+    primerErrorId: number | null;
+    integridadOk: boolean;
+  }> {
+    const client = await logsPool.connect();
+
+    try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+
+      if (fechaDesde) {
+        conditions.push(`fecha_evento >= $${conditions.length + 1}`);
+        params.push(fechaDesde);
+      }
+      if (fechaHasta) {
+        conditions.push(`fecha_evento <= $${conditions.length + 1}`);
+        params.push(fechaHasta);
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      const result = await client.query(
+        `SELECT log_id, hash_evento, hash_anterior 
+         FROM logs_auditoria ${whereClause}
+         ORDER BY log_id ASC`,
+        params
+      );
+
+      let hashEsperado: string | null = null;
+      let registrosValidos = 0;
+      let registrosRotos = 0;
+      let primerErrorId: number | null = null;
+
+      for (const row of result.rows) {
+        // Primer registro: hash_anterior puede ser NULL
+        if (row.hash_anterior === null && hashEsperado === null) {
+          registrosValidos++;
+        } else if (row.hash_anterior === hashEsperado) {
+          registrosValidos++;
+        } else {
+          registrosRotos++;
+          if (primerErrorId === null) {
+            primerErrorId = row.log_id;
+          }
+        }
+        hashEsperado = row.hash_evento;
+      }
+
+      return {
+        totalRegistros: result.rows.length,
+        registrosValidos,
+        registrosRotos,
+        primerErrorId,
+        integridadOk: registrosRotos === 0,
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Obtiene lista de usuarios únicos que aparecen en logs
+   */
+  async getUsuariosEnLogs(): Promise<string[]> {
+    const client = await logsPool.connect();
+
+    try {
+      const result = await client.query(
+        `SELECT DISTINCT usuario_correo 
+         FROM logs_auditoria 
+         WHERE usuario_correo IS NOT NULL 
+         ORDER BY usuario_correo`
+      );
+      return result.rows.map((r) => r.usuario_correo);
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Obtiene estadísticas globales de auditoría
+   */
+  async getEstadisticas(filtros: {
+    fechaDesde?: Date;
+    fechaHasta?: Date;
+    usuarioCorreo?: string;
+    tipoEvento?: string;
+    moduloAfectado?: string;
+  }): Promise<{
+    total: number;
+    exitosas: number;
+    errores: number;
+    denegadas: number;
+  }> {
+    const client = await logsPool.connect();
+
+    try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      let paramIndex = 1;
+
+      if (filtros.usuarioCorreo) {
+        conditions.push(`usuario_correo = $${paramIndex}`);
+        params.push(filtros.usuarioCorreo);
+        paramIndex++;
+      }
+
+      if (filtros.tipoEvento) {
+        conditions.push(`tipo_evento = $${paramIndex}`);
+        params.push(filtros.tipoEvento);
+        paramIndex++;
+      }
+
+      if (filtros.moduloAfectado) {
+        conditions.push(`modulo_afectado = $${paramIndex}`);
+        params.push(filtros.moduloAfectado);
+        paramIndex++;
+      }
+
+      if (filtros.fechaDesde) {
+        conditions.push(`fecha_evento >= $${paramIndex}`);
+        params.push(filtros.fechaDesde);
+        paramIndex++;
+      }
+
+      if (filtros.fechaHasta) {
+        conditions.push(`fecha_evento <= $${paramIndex}`);
+        params.push(filtros.fechaHasta);
+        paramIndex++;
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      // Contar total
+      const totalResult = await client.query(
+        `SELECT COUNT(*) as total FROM logs_auditoria ${whereClause}`,
+        params
+      );
+      const total = parseInt(totalResult.rows[0].total, 10);
+
+      // Contar errores (LOGIN_FALLIDO, eventos con ERROR)
+      const erroresResult = await client.query(
+        `SELECT COUNT(*) as count FROM logs_auditoria ${whereClause} ${whereClause ? 'AND' : 'WHERE'} (tipo_evento ILIKE '%FALLIDO%' OR tipo_evento ILIKE '%ERROR%')`,
+        params
+      );
+      const errores = parseInt(erroresResult.rows[0].count, 10);
+
+      // Contar denegados
+      const denegadosResult = await client.query(
+        `SELECT COUNT(*) as count FROM logs_auditoria ${whereClause} ${whereClause ? 'AND' : 'WHERE'} (tipo_evento ILIKE '%DENEGADO%' OR tipo_evento ILIKE '%RECHAZADO%')`,
+        params
+      );
+      const denegadas = parseInt(denegadosResult.rows[0].count, 10);
+
+      // Exitosas = total - errores - denegadas
+      const exitosas = total - errores - denegadas;
+
+      return {
+        total,
+        exitosas,
+        errores,
+        denegadas,
+      };
+    } finally {
+      client.release();
+    }
   }
 }
 
