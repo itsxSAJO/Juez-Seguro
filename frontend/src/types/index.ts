@@ -234,12 +234,27 @@ export interface Actuacion {
   tipo: string;
   descripcion: string;
   funcionario: string; // Pseudonimizado
+  responsableAnonimo?: string; // Alias para compatibilidad con componentes
+  tieneArchivo?: boolean; // Indica si hay documento descargable
+  mimeType?: string; // Tipo MIME del archivo
+}
+
+// Respuesta del backend para actuaciones
+export interface ActuacionBackend {
+  actuacionId: string;
+  tipoActuacion: string;
+  fechaActuacion: string;
+  descripcion: string;
+  estado: string;
+  funcionarioPseudonimo: string;
+  tieneArchivo?: boolean;
+  mimeType?: string;
 }
 
 // ============================================================================
 // TIPOS PARA CONSULTA CIUDADANA (datos anonimizados)
 // ============================================================================
-export type EstadoProceso = "activo" | "archivado" | "pendiente";
+export type EstadoProceso = "activo" | "archivado" | "pendiente" | "INICIADA" | "EN_TRAMITE" | "RESUELTA" | "ARCHIVADA" | "SUSPENDIDA" | string;
 
 export interface ProcesoPublico {
   id: string;
@@ -253,6 +268,24 @@ export interface ProcesoPublico {
   actorAnonimo: string;
   demandadoAnonimo: string;
   juezAnonimo: string;
+}
+
+// Respuesta del backend (formato CausaPublica)
+export interface CausaPublicaBackend {
+  causaId: number;
+  numeroProceso: string;
+  materia: string;
+  tipoProceso: string;
+  unidadJudicial: string;
+  juezPseudonimo: string;
+  estadoProcesal: string;
+  fechaCreacion: string;
+  descripcion?: string;
+  actorNombre?: string;
+  actorIdentificacion?: string;
+  demandadoNombre?: string;
+  demandadoIdentificacion?: string;
+  secretarioPseudonimo?: string;
 }
 
 export interface BusquedaProcesoRequest {
