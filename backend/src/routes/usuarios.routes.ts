@@ -48,9 +48,21 @@ router.get(
   authorize("ADMIN_CJ"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const correo = req.query.correo as string;
-      
-      if (!correo) {
+      const correoParam = req.query.correo;
+
+      // SEGURIDAD: Validación de tipo en runtime (CWE-1287)
+      // req.query.* puede ser string | string[] | undefined
+      // El cast 'as string' NO valida en runtime y puede causar crash
+      if (typeof correoParam !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: "Parámetro 'correo' debe ser un string válido",
+          code: "TIPO_INVALIDO",
+        });
+        return;
+      }
+
+      if (!correoParam.trim()) {
         res.status(400).json({
           success: false,
           error: "Correo requerido",
@@ -58,7 +70,9 @@ router.get(
         return;
       }
 
-      const disponible = await funcionariosService.verificarDisponibilidadCorreo(correo.toLowerCase());
+      const disponible = await funcionariosService.verificarDisponibilidadCorreo(
+        correoParam.toLowerCase()
+      );
 
       res.json({
         success: true,
