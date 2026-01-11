@@ -215,7 +215,9 @@ export function secureOpenDocument(blob: Blob): string {
   // SEGURIDAD: Abrir con flags de aislamiento de contexto
   // noopener: Previene que la nueva ventana acceda a window.opener
   // noreferrer: No envía header Referer y también implica noopener
-  // snyk:ignore CWE-601 - URL blob: generada localmente, no permite redirección externa
+  // snyk:disable-next-line:open-redirect
+  // Justificación: URL blob: generada por createObjectURL() es same-origin,
+  // validada con startsWith("blob:"), y no permite redirección a dominios externos
   window.open(url, "_blank", "noopener,noreferrer");
 
   // Programar limpieza de la URL después de un tiempo razonable
