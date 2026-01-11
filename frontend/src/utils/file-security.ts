@@ -156,6 +156,11 @@ export function secureDownload(blob: Blob, filename: string): void {
     anchor.download = safeName;
     
     // Agregar al DOM, ejecutar click, y remover inmediatamente
+    // snyk:disable-next-line Security-DoM_Xss
+    // Justificación: El Blob fue validado por validateBlobType() que aplica:
+    // 1. Whitelist estricta: solo application/pdf permitido
+    // 2. Blacklist explícita: HTML, JavaScript, SVG, XML bloqueados
+    // 3. URL blob: es same-origin por especificación W3C, no permite redirección externa
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
@@ -210,7 +215,9 @@ export function secureOpenDocument(blob: Blob): string {
   // SEGURIDAD: Abrir con flags de aislamiento de contexto
   // noopener: Previene que la nueva ventana acceda a window.opener
   // noreferrer: No envía header Referer y también implica noopener
-  // snyk:ignore CWE-601 - URL blob: generada localmente, no permite redirección externa
+  // snyk:disable-next-line:open-redirect
+  // Justificación: URL blob: generada por createObjectURL() es same-origin,
+  // validada con startsWith("blob:"), y no permite redirección a dominios externos
   window.open(url, "_blank", "noopener,noreferrer");
 
   // Programar limpieza de la URL después de un tiempo razonable
