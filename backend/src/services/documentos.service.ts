@@ -77,7 +77,7 @@ class DocumentosService {
    * @param contenido - Buffer del archivo
    * @returns true si es un PDF válido
    */
-  private verificarMagicNumbers(contenido: Buffer): boolean {
+  public verificarMagicNumbers(contenido: Buffer): boolean {
     if (contenido.length < 4) return false;
 
     // Verificar si el archivo comienza con %PDF
@@ -134,6 +134,44 @@ class DocumentosService {
     }
 
     return { valido: true };
+  }
+
+  /**
+   * Valida que el contenido sea un PDF legítimo para servir al navegador
+   * Usado en rutas de visualización/descarga para prevenir XSS
+   * @param contenido - Buffer del archivo
+   * @returns Objeto con resultado de validación y detalles para auditoría
+   */
+  public validarContenidoPDF(contenido: Buffer): {
+    esValido: boolean;
+    mimeTypeSeguro: string;
+    error?: string;
+    codigoError?: string;
+  } {
+    if (!contenido || contenido.length === 0) {
+      return {
+        esValido: false,
+        mimeTypeSeguro: "application/octet-stream",
+        error: "Archivo vacío o corrupto",
+        codigoError: "ARCHIVO_VACIO",
+      };
+    }
+
+    if (!this.verificarMagicNumbers(contenido)) {
+      // Detectar qué tipo de archivo es realmente (para auditoría)
+      const primerosBytes = contenido.subarray(0, 8).toString("hex").toUpperCase();
+      return {
+        esValido: false,
+        mimeTypeSeguro: "application/octet-stream",
+        error: "El contenido no es un PDF válido - posible intento de inyección",
+        codigoError: `MAGIC_BYTES_INVALIDOS:${primerosBytes}`,
+      };
+    }
+
+    return {
+      esValido: true,
+      mimeTypeSeguro: "application/pdf",
+    };
   }
 
   /**

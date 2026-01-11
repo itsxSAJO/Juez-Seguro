@@ -60,6 +60,7 @@ router.get(
  * GET /api/documentos/:id/ver
  * Visualiza el archivo PDF en el navegador
  * HU-SJ-002: Acceso seguro al contenido del archivo
+ * SEGURIDAD: Validación de Magic Bytes + Cabeceras anti-XSS
  * IMPORTANTE: Esta ruta debe estar ANTES de /:id para que Express la matchee correctamente
  */
 router.get(
@@ -79,14 +80,61 @@ router.get(
         return;
       }
 
+      // =====================================================================
+      // VALIDACIÓN DE SEGURIDAD: Verificar Magic Bytes del contenido real
+      // No confiar en mimeType de BD - puede ser falsificado
+      // =====================================================================
+      const validacion = documentosService.validarContenidoPDF(archivo.contenido);
+
+      if (!validacion.esValido) {
+        // Registrar intento de servir archivo no-PDF (posible ataque XSS)
+        await auditService.log({
+          tipoEvento: "ACCESO_DENEGADO",
+          usuarioId: req.user!.funcionarioId,
+          usuarioCorreo: req.user!.correo,
+          moduloAfectado: "DOCUMENTOS",
+          descripcion: `[ALTA] Intento de visualizar archivo no-PDF - posible inyección XSS`,
+          datosAfectados: {
+            documentoId: req.params.id,
+            nombreArchivo: archivo.nombre,
+            mimeTypeAlmacenado: archivo.mimeType,
+            error: validacion.error,
+            codigoError: validacion.codigoError,
+          },
+          ipOrigen: getClientIp(req),
+          userAgent: getUserAgent(req),
+        });
+
+        res.status(403).json({
+          success: false,
+          error: "El archivo no puede ser visualizado por razones de seguridad",
+          code: "CONTENIDO_NO_SEGURO",
+        });
+        return;
+      }
+
       await auditService.logCRUD("documento", "visualizar", req.user!.funcionarioId, req.params.id, {
         nombre: archivo.nombre,
       }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
-      // Headers para visualización inline
-      res.setHeader("Content-Type", archivo.mimeType);
-      res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(archivo.nombre)}"`);
+      // =====================================================================
+      // CABECERAS DE SEGURIDAD ANTI-XSS
+      // =====================================================================
+      // Sanitizar nombre de archivo para evitar header injection
+      const nombreSeguro = archivo.nombre
+        .replace(/["\r\n\\]/g, "_")  // Eliminar caracteres peligrosos
+        .replace(/[^\w\s.-]/g, "_"); // Solo caracteres seguros
+
+      // MIME type validado por magic bytes, no de BD
+      res.setHeader("Content-Type", validacion.mimeTypeSeguro);
+      res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(nombreSeguro)}"`);
       res.setHeader("Content-Length", archivo.contenido.length);
+      
+      // Cabeceras anti-XSS
+      res.setHeader("X-Content-Type-Options", "nosniff");           // Evitar MIME sniffing
+      res.setHeader("Content-Security-Policy", "default-src 'none'"); // Bloquear scripts/recursos
+      res.setHeader("X-Frame-Options", "DENY");                      // Evitar clickjacking
+      res.setHeader("Cache-Control", "no-store, private");           // No cachear documentos sensibles
 
       res.send(archivo.contenido);
     } catch (error) {
@@ -99,6 +147,7 @@ router.get(
  * GET /api/documentos/:id/descargar
  * Descarga el archivo PDF del documento
  * HU-SJ-002: Acceso seguro al contenido del archivo
+ * SEGURIDAD: Validación de Magic Bytes + Cabeceras anti-XSS
  * IMPORTANTE: Esta ruta debe estar ANTES de /:id para que Express la matchee correctamente
  */
 router.get(
@@ -118,14 +167,59 @@ router.get(
         return;
       }
 
+      // =====================================================================
+      // VALIDACIÓN DE SEGURIDAD: Verificar Magic Bytes del contenido real
+      // No confiar en mimeType de BD - puede ser falsificado
+      // =====================================================================
+      const validacion = documentosService.validarContenidoPDF(archivo.contenido);
+
+      if (!validacion.esValido) {
+        // Registrar intento de descargar archivo no-PDF (posible ataque)
+        await auditService.log({
+          tipoEvento: "ACCESO_DENEGADO",
+          usuarioId: req.user!.funcionarioId,
+          usuarioCorreo: req.user!.correo,
+          moduloAfectado: "DOCUMENTOS",
+          descripcion: `[ALTA] Intento de descargar archivo no-PDF - contenido corrupto o malicioso`,
+          datosAfectados: {
+            documentoId: req.params.id,
+            nombreArchivo: archivo.nombre,
+            mimeTypeAlmacenado: archivo.mimeType,
+            error: validacion.error,
+            codigoError: validacion.codigoError,
+          },
+          ipOrigen: getClientIp(req),
+          userAgent: getUserAgent(req),
+        });
+
+        res.status(403).json({
+          success: false,
+          error: "El archivo no puede ser descargado por razones de seguridad",
+          code: "CONTENIDO_NO_SEGURO",
+        });
+        return;
+      }
+
       await auditService.logCRUD("documento", "descargar", req.user!.funcionarioId, req.params.id, {
         nombre: archivo.nombre,
       }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
-      // Headers para descarga
-      res.setHeader("Content-Type", archivo.mimeType);
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(archivo.nombre)}"`);
+      // =====================================================================
+      // CABECERAS DE SEGURIDAD
+      // =====================================================================
+      // Sanitizar nombre de archivo para evitar header injection
+      const nombreSeguro = archivo.nombre
+        .replace(/["\r\n\\]/g, "_")  // Eliminar caracteres peligrosos
+        .replace(/[^\w\s.-]/g, "_"); // Solo caracteres seguros
+
+      // MIME type validado por magic bytes, no de BD
+      res.setHeader("Content-Type", validacion.mimeTypeSeguro);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nombreSeguro)}"`);
       res.setHeader("Content-Length", archivo.contenido.length);
+      
+      // Cabeceras de seguridad
+      res.setHeader("X-Content-Type-Options", "nosniff");  // Evitar MIME sniffing
+      res.setHeader("Cache-Control", "no-store, private"); // No cachear documentos sensibles
 
       res.send(archivo.contenido);
     } catch (error) {
