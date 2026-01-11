@@ -36,7 +36,9 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.env.test
 **/.env
+**/.env.test
 !.env.example
 !**/.env.example
 # Certificados y claves PKI (CRÍTICO - nunca subir al repositorio)

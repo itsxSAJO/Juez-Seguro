@@ -6,6 +6,41 @@
 import { Request, Response, NextFunction } from "express";
 
 // ============================================================================
+// SEGURIDAD: Función auxiliar para extracción segura de query params
+// ============================================================================
+
+/**
+ * SEGURIDAD: Extrae un query parameter como string de forma segura.
+ * Previene ataques de HTTP Parameter Pollution (HPP) donde el atacante
+ * envía arrays u objetos en lugar de strings (ej: ?q[0]=val o ?q[key]=val).
+ * 
+ * CWE-1287: Improper Validation of Specified Type of Input
+ * 
+ * @param value - Valor del query parameter (puede ser string, array u objeto)
+ * @returns string si es válido, undefined si no es un string primitivo
+ * 
+ * @example
+ * // Request: ?q=test → "test"
+ * // Request: ?q[0]=test → undefined (ataque HPP)
+ * // Request: ?q[key]=test → undefined (ataque HPP)
+ */
+function getSafeQueryString(value: unknown): string | undefined {
+  // Si es undefined o null, retornar undefined
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  
+  // SEGURIDAD: Solo aceptar strings primitivos
+  // El casting "as string" de TypeScript desaparece en runtime,
+  // por lo que debemos validar explícitamente el tipo
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  
+  return value;
+}
+
+// ============================================================================
 // Formato del Número de Causa Ecuatoriano
 // ============================================================================
 // Formato: PPCCC-AAAA-NNNNN[L]
@@ -97,22 +132,23 @@ export const parseCausaNumber = (numeroCausa: string): {
 
 /**
  * Middleware para validar formato de número de causa
+ * SEGURIDAD: Validación de tipo en runtime para prevenir CWE-1287
  */
 export const validateCausaFormatMiddleware = (
   req: Request,
   res: Response,
   next: NextFunction
 ): void => {
-  // Obtener número de causa de query, params o body
+  // SEGURIDAD: Extraer número de causa de forma segura (previene HPP)
   const numeroCausa = 
-    req.query.numeroProceso as string ||
+    getSafeQueryString(req.query.numeroProceso) ||
     req.params.numeroProceso ||
-    req.body?.numeroProceso;
+    (typeof req.body?.numeroProceso === 'string' ? req.body.numeroProceso : undefined);
   
   if (!numeroCausa) {
     res.status(400).json({
       success: false,
-      error: "Número de proceso requerido",
+      error: "Número de proceso requerido. Debe ser un texto válido.",
       code: "MISSING_PROCESS_NUMBER",
     });
     return;
@@ -145,25 +181,32 @@ export const validateCausaFormatMiddleware = (
 
 /**
  * Middleware para validar búsquedas parciales
+ * SEGURIDAD: Validación de tipo en runtime para prevenir CWE-1287
  */
 export const validatePartialSearchMiddleware = (
   req: Request,
   res: Response,
   next: NextFunction
 ): void => {
-  const query = req.query.q as string || req.query.busqueda as string;
+  // SEGURIDAD: Extraer query params de forma segura (previene CWE-1287 y HPP)
+  // El casting "as string" de TypeScript desaparece en runtime
+  // Si el atacante envía ?q[0]=val o ?q[key]=val, Express lo parsea como array/objeto
+  const query = getSafeQueryString(req.query.q) || getSafeQueryString(req.query.busqueda);
   
   if (!query) {
     res.status(400).json({
       success: false,
-      error: "Término de búsqueda requerido",
+      error: "Término de búsqueda requerido. Debe ser un texto válido.",
       code: "MISSING_SEARCH_TERM",
     });
     return;
   }
   
+  // SEGURIDAD: Ahora es seguro usar .trim() porque validamos el tipo en runtime
+  const trimmedQuery = query.trim();
+  
   // Mínimo 5 caracteres
-  if (query.trim().length < 5) {
+  if (trimmedQuery.length < 5) {
     res.status(400).json({
       success: false,
       error: "El término de búsqueda debe tener al menos 5 caracteres",

@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { api, ApiResponse, PaginatedResponse } from "./api";
+import { secureDownload, validateBlobType } from "../utils/file-security";
 import type { ProcesoPublico, Actuacion, BusquedaProcesoRequest, CausaPublicaBackend, ActuacionBackend } from "@/types";
 
 /**
@@ -227,10 +228,12 @@ export const consultaCiudadanaService = {
   /**
    * Descarga un documento público
    * No requiere autenticación
+   * SEGURIDAD: Validación de blob y sanitización de nombre de archivo
    */
   async descargarDocumento(documentoId: string, nombreArchivo: string): Promise<void> {
     try {
-      const response = await fetch(`http://localhost:3000/api/publico/documentos/${documentoId}/descargar`, {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+      const response = await fetch(`${apiUrl}/publico/documentos/${documentoId}/descargar`, {
         method: "GET",
       });
 
@@ -239,20 +242,18 @@ export const consultaCiudadanaService = {
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
       
-      // Crear enlace temporal para descargar
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = nombreArchivo;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // SEGURIDAD: Validar que sea un PDF antes de descargar
+      const validation = validateBlobType(blob);
+      if (!validation.isValid) {
+        throw new Error(validation.error || "Tipo de archivo no permitido");
+      }
       
-      // Limpiar URL
-      window.URL.revokeObjectURL(url);
+      // Usar función centralizada (sanitiza nombre, maneja DOM de forma segura)
+      secureDownload(blob, nombreArchivo);
+      
     } catch (error) {
-      console.error("Error al descargar documento:", error);
+      // Evitar exponer detalles técnicos en producción
       throw new Error("No se pudo descargar el documento");
     }
   },
@@ -260,9 +261,12 @@ export const consultaCiudadanaService = {
   /**
    * Abre un documento para visualización en nueva pestaña
    * No requiere autenticación
+   * SEGURIDAD: Usa noopener,noreferrer para aislar el contexto
    */
   verDocumento(documentoId: string): void {
-    const url = `http://localhost:3000/api/publico/documentos/${documentoId}/ver`;
-    window.open(url, "_blank");
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+    const url = `${apiUrl}/publico/documentos/${documentoId}/ver`;
+    // SEGURIDAD: noopener previene acceso a window.opener, noreferrer no envía Referer
+    window.open(url, "_blank", "noopener,noreferrer");
   },
 };

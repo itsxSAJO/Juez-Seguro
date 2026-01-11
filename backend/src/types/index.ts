@@ -204,7 +204,8 @@ export type ModuloAfectado =
   | "NOTIFICACIONES"
   | "DECISIONES"
   | "PLAZOS"
-  | "FIRMAS";
+  | "FIRMAS"
+  | "PORTAL_CIUDADANO";
 
 // Mapeado a la tabla 'logs_auditoria'
 export interface LogAuditoria {
