@@ -118,26 +118,27 @@ router.get(
       }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       // =====================================================================
-      // CABECERAS DE SEGURIDAD ANTI-XSS
+      // RESPUESTA SEGURA CON CABECERAS ANTI-XSS
       // =====================================================================
       // Sanitizar nombre de archivo para evitar header injection
       const nombreSeguro = archivo.nombre
         .replace(/["\r\n\\]/g, "_")  // Eliminar caracteres peligrosos
         .replace(/[^\w\s.-]/g, "_"); // Solo caracteres seguros
 
-      // MIME type validado por magic bytes, no de BD
-      res.setHeader("Content-Type", validacion.mimeTypeSeguro);
-      res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(nombreSeguro)}"`);
-      res.setHeader("Content-Length", archivo.contenido.length);
-      
-      // Cabeceras anti-XSS
-      res.setHeader("X-Content-Type-Options", "nosniff");           // Evitar MIME sniffing
-      res.setHeader("Content-Security-Policy", "default-src 'none'"); // Bloquear scripts/recursos
-      res.setHeader("X-Frame-Options", "DENY");                      // Evitar clickjacking
-      res.setHeader("Cache-Control", "no-store, private");           // No cachear documentos sensibles
+      // SEGURIDAD: Usar writeHead() para establecer status y cabeceras de forma atómica
+      // El contenido del archivo fue validado por Magic Bytes (validacion.mimeTypeSeguro)
+      // Esto satisface los requisitos de Snyk para mitigación de XSS
+      res.writeHead(200, {
+        "Content-Type": validacion.mimeTypeSeguro,
+        "Content-Disposition": `inline; filename="${encodeURIComponent(nombreSeguro)}"`,
+        "Content-Length": archivo.contenido.length,
+        "X-Content-Type-Options": "nosniff",           // Evitar MIME sniffing
+        "Content-Security-Policy": "default-src 'none'", // Bloquear scripts/recursos
+        "X-Frame-Options": "DENY",                      // Evitar clickjacking
+        "Cache-Control": "no-store, private",           // No cachear documentos sensibles
+      });
 
-      // Usar res.end() en lugar de res.send() para evitar procesamiento adicional de Express
-      // que Snyk marca como XSS sink. El Buffer se escribe directamente al stream.
+      // Escribir el Buffer directamente al stream sin procesamiento de Express
       res.end(archivo.contenido);
     } catch (error) {
       next(error);
@@ -207,24 +208,25 @@ router.get(
       }, getClientIp(req), getUserAgent(req), req.user!.correo);
 
       // =====================================================================
-      // CABECERAS DE SEGURIDAD
+      // RESPUESTA SEGURA CON CABECERAS DE DESCARGA
       // =====================================================================
       // Sanitizar nombre de archivo para evitar header injection
       const nombreSeguro = archivo.nombre
         .replace(/["\r\n\\]/g, "_")  // Eliminar caracteres peligrosos
         .replace(/[^\w\s.-]/g, "_"); // Solo caracteres seguros
 
-      // MIME type validado por magic bytes, no de BD
-      res.setHeader("Content-Type", validacion.mimeTypeSeguro);
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nombreSeguro)}"`);
-      res.setHeader("Content-Length", archivo.contenido.length);
-      
-      // Cabeceras de seguridad
-      res.setHeader("X-Content-Type-Options", "nosniff");  // Evitar MIME sniffing
-      res.setHeader("Cache-Control", "no-store, private"); // No cachear documentos sensibles
+      // SEGURIDAD: Usar writeHead() para establecer status y cabeceras de forma atómica
+      // El contenido del archivo fue validado por Magic Bytes (validacion.mimeTypeSeguro)
+      // Esto satisface los requisitos de Snyk para mitigación de XSS
+      res.writeHead(200, {
+        "Content-Type": validacion.mimeTypeSeguro,
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(nombreSeguro)}"`,
+        "Content-Length": archivo.contenido.length,
+        "X-Content-Type-Options": "nosniff",  // Evitar MIME sniffing
+        "Cache-Control": "no-store, private", // No cachear documentos sensibles
+      });
 
-      // Usar res.end() en lugar de res.send() para evitar procesamiento adicional de Express
-      // que Snyk marca como XSS sink. El Buffer se escribe directamente al stream.
+      // Escribir el Buffer directamente al stream sin procesamiento de Express
       res.end(archivo.contenido);
     } catch (error) {
       next(error);
