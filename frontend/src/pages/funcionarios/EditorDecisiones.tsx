@@ -41,6 +41,7 @@ import {
 // Servicios reales
 import { decisionesService, DecisionJudicial, TipoDecision, EstadoDecision, FirmaResult, VerificacionFirma, HistorialDecision } from "@/services/decisiones.service";
 import { causasService } from "@/services/causas.service";
+import { secureDownload, validateBlobType } from "@/utils/file-security";
 import type { Causa } from "@/types";
 
 const EditorDecisiones = () => {
@@ -415,18 +416,29 @@ Notifíquese.`
 
     try {
       const blob = await decisionesService.descargarPdfFirmado(decisionActual.decisionId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `decision_${decisionActual.decisionId}_firmada.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      
+      // SEGURIDAD: Validar que el blob sea un PDF válido antes de procesar
+      const validation = validateBlobType(blob);
+      if (!validation.isValid) {
+        toast({
+          variant: "destructive",
+          title: "Error de seguridad",
+          description: validation.error || "El archivo recibido no es un PDF válido",
+        });
+        return;
+      }
+      
+      // SEGURIDAD: Construir nombre con ID convertido a string (defensa en profundidad)
+      // sanitizeFilename() se aplica internamente en secureDownload()
+      const nombreArchivo = `decision_${String(decisionActual.decisionId)}_firmada.pdf`;
+      
+      // Usar función centralizada que valida, sanitiza y maneja el DOM de forma segura
+      secureDownload(blob, nombreArchivo);
+      
     } catch (error) {
       toast({
         title: "Error",
-        description: "No se pudo descargar el PDF",
+        description: error instanceof Error ? error.message : "No se pudo descargar el PDF",
         variant: "destructive",
       });
     }
