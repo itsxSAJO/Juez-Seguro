@@ -16,17 +16,16 @@ import { auditService } from "./audit.service.js";
  */
 class PseudonimosService {
   /**
-   * Salt secreto para HMAC - Debe ser configurado en producción
+   * Salt secreto para HMAC - Configurado desde config centralizado
    * CRÍTICO: Este valor NUNCA debe ser expuesto o almacenado en la BD
+   * SEGURIDAD: Validado al inicio por config (Fail Fast)
    */
   private readonly HMAC_SECRET: string;
 
   constructor() {
-    this.HMAC_SECRET = process.env.PSEUDONIMO_HMAC_SECRET || "juez-seguro-hmac-secret-change-in-production";
-    
-    if (process.env.NODE_ENV === "production" && this.HMAC_SECRET.includes("change-in-production")) {
-      throw new Error("PSEUDONIMO_HMAC_SECRET debe ser configurado en producción");
-    }
+    // Secreto importado desde configuración centralizada
+    // La validación de existencia ya se realizó en config/index.ts (Fail Fast)
+    this.HMAC_SECRET = config.security.pseudonimoHmacSecret;
   }
 
   /**

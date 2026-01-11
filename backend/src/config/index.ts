@@ -67,6 +67,7 @@ const JWT_SECRET = getRequiredEnv("JWT_SECRET", "Secreto para firmar tokens JWT"
 const DB_USERS_PASSWORD = getRequiredEnv("DB_USERS_PASSWORD", "Contraseña BD de usuarios");
 const DB_CASES_PASSWORD = getRequiredEnv("DB_CASES_PASSWORD", "Contraseña BD de casos");
 const DB_LOGS_PASSWORD = getRequiredEnv("DB_LOGS_PASSWORD", "Contraseña BD de logs");
+const PSEUDONIMO_HMAC_SECRET = getRequiredEnv("PSEUDONIMO_HMAC_SECRET", "Secreto HMAC para pseudónimos de jueces");
 
 // ============================================================================
 // CONFIGURACIÓN EXPORTADA
@@ -118,6 +119,7 @@ export const config = {
     bcryptRounds: parseInt(getOptionalEnv("BCRYPT_ROUNDS", "12"), 10),
     maxLoginAttempts: parseInt(getOptionalEnv("MAX_LOGIN_ATTEMPTS", "5"), 10),
     lockoutDurationMinutes: parseInt(getOptionalEnv("LOCKOUT_DURATION_MINUTES", "30"), 10),
+    pseudonimoHmacSecret: PSEUDONIMO_HMAC_SECRET,  // Sin fallback - validado arriba
   },
 
   // Rate Limiting

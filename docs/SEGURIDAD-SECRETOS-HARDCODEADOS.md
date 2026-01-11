@@ -102,6 +102,7 @@ function getOptionalEnv(name: string, defaultValue: string): string {
 | `DB_USERS_PASSWORD` | Contraseña BD usuarios | Acceso no autorizado a credenciales |
 | `DB_CASES_PASSWORD` | Contraseña BD casos | Acceso a información judicial sensible |
 | `DB_LOGS_PASSWORD` | Contraseña BD logs | Manipulación de auditoría |
+| `PSEUDONIMO_HMAC_SECRET` | Secreto HMAC para pseudónimos | Permite revertir identidad de jueces |
 
 #### Variables OPCIONALES (con fallback seguro)
 
@@ -182,6 +183,9 @@ DB_CASES_PASSWORD=contraseña-segura-casos
 
 # Base de Datos Logs - OBLIGATORIO
 DB_LOGS_PASSWORD=contraseña-segura-logs
+
+# HMAC para Pseudónimos de Jueces - OBLIGATORIO
+PSEUDONIMO_HMAC_SECRET=secreto-hmac-para-proteger-identidad-jueces
 ```
 
 ### 4.2 Generación de Secretos Seguros
@@ -250,3 +254,4 @@ env:
 | Fecha | Versión | Descripción |
 |-------|---------|-------------|
 | 2026-01-10 | 1.0 | Implementación de Fail Fast para secretos críticos |
+| 2026-01-10 | 1.1 | Agregado PSEUDONIMO_HMAC_SECRET a configuración centralizada |
