@@ -1,12 +1,78 @@
 // ============================================================================
 // JUEZ SEGURO - Servicio de Consulta Ciudadana
+// HU-UP-001: Consulta del expediente electrónico de mi proceso
 // Búsqueda pública de procesos (datos anonimizados)
 // ============================================================================
 
 import { api, ApiResponse, PaginatedResponse } from "./api";
-import type { ProcesoPublico, Actuacion, BusquedaProcesoRequest } from "@/types";
+import type { ProcesoPublico, Actuacion, BusquedaProcesoRequest, CausaPublicaBackend, ActuacionBackend } from "@/types";
+
+/**
+ * Transforma datos del backend (CausaPublica) al formato del frontend (ProcesoPublico)
+ */
+const transformarCausaAProcesoPublico = (causa: CausaPublicaBackend): ProcesoPublico => {
+  return {
+    id: causa.causaId?.toString() || causa.numeroProceso,
+    numeroExpediente: causa.numeroProceso,
+    fechaIngreso: causa.fechaCreacion ? new Date(causa.fechaCreacion).toLocaleDateString("es-EC") : "",
+    dependencia: causa.unidadJudicial || "",
+    materia: causa.materia || "",
+    tipoAccion: causa.tipoProceso || "",
+    estado: causa.estadoProcesal || "pendiente",
+    // Datos anonimizados
+    actorAnonimo: causa.actorNombre || "Actor Anónimo",
+    demandadoAnonimo: causa.demandadoNombre || "Demandado Anónimo",
+    juezAnonimo: causa.juezPseudonimo || "Juez Anónimo",
+  };
+};
+
+/**
+ * Transforma actuación del backend al formato del frontend
+ */
+const transformarActuacion = (act: ActuacionBackend): Actuacion => {
+  return {
+    id: act.actuacionId?.toString() || "",
+    fecha: act.fechaActuacion ? new Date(act.fechaActuacion).toLocaleDateString("es-EC") : "",
+    tipo: act.tipoActuacion || "Documento",
+    descripcion: act.descripcion || "Sin descripción",
+    funcionario: act.funcionarioPseudonimo || "Sistema",
+    responsableAnonimo: act.funcionarioPseudonimo || "Sistema",
+    tieneArchivo: act.tieneArchivo || false,
+    mimeType: act.mimeType || "application/pdf",
+  };
+};
 
 export const consultaCiudadanaService = {
+  /**
+   * Busca un proceso por número de expediente (público, sin autenticación)
+   * Los datos retornados están anonimizados según FDP_IFF
+   */
+  async buscarPorNumero(numeroProceso: string): Promise<ProcesoPublico | null> {
+    try {
+      const response = await api.get<ApiResponse<CausaPublicaBackend>>("/publico/buscar", {
+        numeroProceso,
+      });
+      
+      if (response.success && response.data) {
+        return transformarCausaAProcesoPublico(response.data);
+      }
+      
+      return null;
+    } catch (error: any) {
+      // Manejar errores específicos
+      if (error?.code === "RATE_LIMIT_EXCEEDED") {
+        throw new Error("Demasiadas consultas. Por favor espere un momento.");
+      }
+      if (error?.code === "IP_BLOCKED") {
+        throw new Error("IP bloqueada temporalmente por demasiados intentos fallidos.");
+      }
+      if (error?.code === "INVALID_FORMAT") {
+        throw new Error("Formato de número de proceso inválido. Use: PPCCC-AAAA-NNNNN");
+      }
+      return null;
+    }
+  },
+
   /**
    * Busca procesos por criterio (público, sin autenticación)
    * Los datos retornados están anonimizados
@@ -17,26 +83,44 @@ export const consultaCiudadanaService = {
     page: number = 1,
     pageSize: number = 10
   ): Promise<PaginatedResponse<ProcesoPublico>> {
+    // Si es búsqueda por número de proceso, usar endpoint directo
+    if (tipo === "proceso") {
+      const proceso = await this.buscarPorNumero(query);
+      return {
+        success: true,
+        data: proceso ? [proceso] : [],
+        total: proceso ? 1 : 0,
+        page: 1,
+        pageSize: 10,
+      };
+    }
+    
+    // Para búsqueda por actor o demandado, usar el endpoint con tipoBusqueda
     const params: Record<string, string> = {
-      q: query,
-      tipo,
+      busqueda: query,
+      tipoBusqueda: tipo, // "actor" o "demandado"
       page: page.toString(),
       pageSize: pageSize.toString(),
     };
     
-    return api.get<PaginatedResponse<ProcesoPublico>>("/publico/procesos/buscar", params);
+    const response = await api.get<PaginatedResponse<CausaPublicaBackend>>("/publico/causas", params);
+    
+    return {
+      ...response,
+      data: (response.data || []).map(transformarCausaAProcesoPublico),
+    };
   },
 
   /**
-   * Obtiene detalle de un proceso por ID (público)
+   * Obtiene detalle de un proceso por número (público)
    * Solo retorna información pública con datos anonimizados
    */
-  async getProcesoById(id: string): Promise<ProcesoPublico | null> {
+  async getProcesoById(numeroProceso: string): Promise<ProcesoPublico | null> {
     try {
-      const response = await api.get<ApiResponse<ProcesoPublico>>(`/publico/procesos/${id}`);
+      const response = await api.get<ApiResponse<CausaPublicaBackend>>(`/publico/procesos/${numeroProceso}`);
       
       if (response.success && response.data) {
-        return response.data;
+        return transformarCausaAProcesoPublico(response.data);
       }
       
       return null;
@@ -47,16 +131,16 @@ export const consultaCiudadanaService = {
 
   /**
    * Obtiene actuaciones públicas de un proceso
-   * Las actuaciones están anonimizadas (sin nombres reales)
+   * Las actuaciones están anonimizadas (sin nombres reales de funcionarios)
    */
-  async getActuaciones(procesoId: string): Promise<Actuacion[]> {
+  async getActuaciones(numeroProceso: string): Promise<Actuacion[]> {
     try {
-      const response = await api.get<ApiResponse<Actuacion[]>>(
-        `/publico/procesos/${procesoId}/actuaciones`
+      const response = await api.get<ApiResponse<ActuacionBackend[]>>(
+        `/publico/procesos/${numeroProceso}/actuaciones`
       );
       
       if (response.success && response.data) {
-        return response.data;
+        return response.data.map(transformarActuacion);
       }
       
       return [];
@@ -66,12 +150,12 @@ export const consultaCiudadanaService = {
   },
 
   /**
-   * Valida un número de expediente
+   * Valida un número de expediente (formato y existencia)
    */
   async validarExpediente(numeroExpediente: string): Promise<{ valido: boolean; existe: boolean }> {
     try {
       const response = await api.get<ApiResponse<{ valido: boolean; existe: boolean }>>(
-        "/publico/procesos/validar",
+        "/publico/validar",
         { expediente: numeroExpediente }
       );
       
@@ -86,35 +170,99 @@ export const consultaCiudadanaService = {
   },
 
   /**
-   * Obtiene estadísticas públicas (sin datos sensibles)
+   * Obtiene lista de causas públicas con filtros
    */
-  async getEstadisticasPublicas(): Promise<{
-    totalProcesos: number;
-    procesosPorMateria: Record<string, number>;
-    procesosPorEstado: Record<string, number>;
-  }> {
+  async getCausasPublicas(filtros?: {
+    materia?: string;
+    estadoProcesal?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PaginatedResponse<ProcesoPublico>> {
+    const params: Record<string, string> = {};
+    
+    if (filtros) {
+      if (filtros.materia) params.materia = filtros.materia;
+      if (filtros.estadoProcesal) params.estadoProcesal = filtros.estadoProcesal;
+      if (filtros.page) params.page = filtros.page.toString();
+      if (filtros.pageSize) params.pageSize = filtros.pageSize.toString();
+    }
+    
+    return api.get<PaginatedResponse<ProcesoPublico>>("/publico/causas", params);
+  },
+
+  /**
+   * Obtiene lista de materias disponibles
+   */
+  async getMaterias(): Promise<string[]> {
     try {
-      const response = await api.get<ApiResponse<{
-        totalProcesos: number;
-        procesosPorMateria: Record<string, number>;
-        procesosPorEstado: Record<string, number>;
-      }>>("/publico/estadisticas");
+      const response = await api.get<ApiResponse<string[]>>("/publico/materias");
       
       if (response.success && response.data) {
         return response.data;
       }
       
-      return {
-        totalProcesos: 0,
-        procesosPorMateria: {},
-        procesosPorEstado: {},
-      };
+      return [];
     } catch {
-      return {
-        totalProcesos: 0,
-        procesosPorMateria: {},
-        procesosPorEstado: {},
-      };
+      return [];
     }
+  },
+
+  /**
+   * Obtiene lista de unidades judiciales
+   */
+  async getUnidadesJudiciales(): Promise<string[]> {
+    try {
+      const response = await api.get<ApiResponse<string[]>>("/publico/unidades-judiciales");
+      
+      if (response.success && response.data) {
+        return response.data;
+      }
+      
+      return [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Descarga un documento público
+   * No requiere autenticación
+   */
+  async descargarDocumento(documentoId: string, nombreArchivo: string): Promise<void> {
+    try {
+      const response = await fetch(`http://localhost:3000/api/publico/documentos/${documentoId}/descargar`, {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        throw new Error("Error al descargar el documento");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Crear enlace temporal para descargar
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = nombreArchivo;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // Limpiar URL
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error al descargar documento:", error);
+      throw new Error("No se pudo descargar el documento");
+    }
+  },
+
+  /**
+   * Abre un documento para visualización en nueva pestaña
+   * No requiere autenticación
+   */
+  verDocumento(documentoId: string): void {
+    const url = `http://localhost:3000/api/publico/documentos/${documentoId}/ver`;
+    window.open(url, "_blank");
   },
 };

@@ -1,6 +1,6 @@
 // ============================================================================
 // JUEZ SEGURO - Adaptador de Datos
-// Permite alternar entre datos mock (desarrollo) y API real (producción)
+// HU-UP-001: Permite alternar entre datos mock (desarrollo) y API real
 // ============================================================================
 
 import { consultaCiudadanaService } from "@/services";

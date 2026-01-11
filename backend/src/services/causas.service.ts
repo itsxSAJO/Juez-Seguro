@@ -9,7 +9,7 @@ import { casesPool, usersPool } from "../db/connection.js";
 import crypto from "crypto";
 import { auditService } from "./audit.service.js";
 import { notificacionesService } from "./notificaciones.service.js";
-import type { Causa, CausaPublica, EstadoProcesal, Expediente, MapaPseudonimo, TokenPayload } from "../types/index.js";
+import type { Causa, CausaPublica, ActuacionPublica, EstadoProcesal, Expediente, MapaPseudonimo, TokenPayload } from "../types/index.js";
 
 // ============================================================================
 // INTERFACES
@@ -47,6 +47,7 @@ interface FiltrosCausas {
   unidadJudicial?: string;
   juezAsignadoId?: number;
   busqueda?: string;
+  tipoBusqueda?: "actor" | "demandado" | "proceso" | "general";
   page?: number;
   pageSize?: number;
 }
@@ -520,8 +521,23 @@ class CausasService {
       }
 
       if (filtros.busqueda) {
-        conditions.push(`(numero_proceso ILIKE $${paramIndex} OR materia ILIKE $${paramIndex})`);
-        params.push(`%${filtros.busqueda}%`);
+        // Buscar según el tipo especificado
+        if (filtros.tipoBusqueda === "actor") {
+          conditions.push(`actor_nombre ILIKE $${paramIndex}`);
+          params.push(`%${filtros.busqueda}%`);
+        } else if (filtros.tipoBusqueda === "demandado") {
+          conditions.push(`demandado_nombre ILIKE $${paramIndex}`);
+          params.push(`%${filtros.busqueda}%`);
+        } else {
+          // Por defecto buscar en número de proceso, materia, actor y demandado
+          conditions.push(`(
+            numero_proceso ILIKE $${paramIndex} OR 
+            materia ILIKE $${paramIndex} OR
+            actor_nombre ILIKE $${paramIndex} OR
+            demandado_nombre ILIKE $${paramIndex}
+          )`);
+          params.push(`%${filtros.busqueda}%`);
+        }
         paramIndex++;
       }
 
@@ -703,6 +719,55 @@ class CausasService {
       // Funcionario que registró: pseudónimo
       secretarioPseudonimo: c.secretario_pseudonimo,
     };
+  }
+
+  /**
+   * Obtiene actuaciones públicas de una causa (sin datos sensibles)
+   * Usa la tabla documentos como registro de actuaciones procesales
+   * Solo retorna información que la ley permite ver públicamente
+   * Incluye indicador de si el documento tiene archivo descargable
+   */
+  async getActuacionesPublicas(causaId: number): Promise<ActuacionPublica[]> {
+    const client = await casesPool.connect();
+
+    try {
+      // Consulta documentos como actuaciones, EXCLUYENDO datos sensibles de funcionarios
+      // Incluye información sobre si tiene archivo para descarga pública
+      const result = await client.query(
+        `SELECT 
+          d.id as actuacion_id,
+          d.tipo as tipo_actuacion,
+          d.fecha_subida as fecha_actuacion,
+          d.nombre as descripcion,
+          d.estado,
+          d.ruta,
+          d.mime_type,
+          -- Solo consultar pseudónimo si hay referencia al funcionario
+          COALESCE(
+            (SELECT pseudonimo_publico FROM mapa_pseudonimos WHERE juez_id_real = d.subido_por_id),
+            'Sistema'
+          ) as funcionario_pseudonimo
+        FROM documentos d
+        WHERE d.causa_id = $1
+        AND d.estado != 'eliminado'
+        ORDER BY d.fecha_subida DESC`,
+        [causaId]
+      );
+
+      return result.rows.map((row) => ({
+        actuacionId: row.actuacion_id,
+        tipoActuacion: row.tipo_actuacion || "Documento",
+        fechaActuacion: row.fecha_actuacion,
+        descripcion: row.descripcion || "Sin descripción",
+        estado: row.estado || "activo",
+        funcionarioPseudonimo: row.funcionario_pseudonimo || "Sistema",
+        // Indicar si tiene archivo descargable (ruta no nula y es PDF público)
+        tieneArchivo: !!row.ruta,
+        mimeType: row.mime_type || "application/pdf",
+      }));
+    } finally {
+      client.release();
+    }
   }
 }
 

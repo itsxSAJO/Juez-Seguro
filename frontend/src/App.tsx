@@ -2,9 +2,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/funcionarios/ProtectedRoute";
+
+// Componente para redirección dinámica de /proceso/:id a /ciudadano/proceso/:id
+const ProcesoRedirect = () => {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/ciudadano/proceso/${id}`} replace />;
+};
 
 // Public pages
 import Index from "./pages/Index";
@@ -45,11 +51,11 @@ const App = () => (
 
             {/* Portal Ciudadano */}
             <Route path="/ciudadano" element={<ConsultaCiudadana />} />
-            <Route path="/ciudadano/proceso/:id" element={<ProcesoDetalle />} />
+            <Route path="/ciudadano/proceso/:numeroProceso" element={<ProcesoDetalle />} />
             <Route path="/ayuda" element={<Ayuda />} />
 
-            {/* Legacy redirects */}
-            <Route path="/proceso/:id" element={<Navigate to="/ciudadano/proceso/:id" replace />} />
+            {/* Legacy redirects - mantener compatibilidad con URLs antiguas */}
+            <Route path="/proceso/:id" element={<ProcesoRedirect />} />
 
             {/* Portal Funcionarios - Public */}
             <Route path="/funcionarios/login" element={<LoginFuncionarios />} />

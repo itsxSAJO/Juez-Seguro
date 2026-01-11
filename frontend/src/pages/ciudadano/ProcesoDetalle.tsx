@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { getProcessById, getActuaciones } from "@/lib/data";
+import { consultaCiudadanaService } from "@/services/consulta-ciudadana.service";
 import type { Actuacion, ProcesoPublico } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,22 +18,26 @@ import {
   User,
   Shield,
   Clock,
+  Download,
+  Eye,
 } from "lucide-react";
 
 const ProcesoDetalle = () => {
-  const { id } = useParams<{ id: string }>();
-  const [process, setProcess] = useState<JudicialProcess | null>(null);
+  const { numeroProceso } = useParams<{ numeroProceso: string }>();
+  const [process, setProcess] = useState<ProcesoPublico | null>(null);
   const [actuaciones, setActuaciones] = useState<Actuacion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
-      if (!id) return;
+      if (!numeroProceso) return;
       setIsLoading(true);
       try {
+        // Decodificar el número de proceso de la URL
+        const decodedNumeroProceso = decodeURIComponent(numeroProceso);
         const [processData, actuacionesData] = await Promise.all([
-          getProcessById(id),
-          getActuaciones(id),
+          getProcessById(decodedNumeroProceso),
+          getActuaciones(decodedNumeroProceso),
         ]);
         setProcess(processData);
         setActuaciones(actuacionesData);
@@ -43,7 +48,22 @@ const ProcesoDetalle = () => {
       }
     };
     loadData();
-  }, [id]);
+  }, [numeroProceso]);
+
+  // Función para ver documento en nueva pestaña
+  const handleVerDocumento = (documentoId: string) => {
+    consultaCiudadanaService.verDocumento(documentoId);
+  };
+
+  // Función para descargar documento
+  const handleDescargarDocumento = async (documentoId: string, nombreArchivo: string) => {
+    try {
+      await consultaCiudadanaService.descargarDocumento(documentoId, nombreArchivo);
+    } catch (error) {
+      console.error("Error al descargar:", error);
+      alert("No se pudo descargar el documento");
+    }
+  };
 
   const getEstadoBadge = (estado: string) => {
     switch (estado) {
@@ -197,29 +217,62 @@ const ProcesoDetalle = () => {
         {/* Timeline */}
         <Card>
           <CardHeader>
-            <CardTitle>Actuaciones Procesales</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Actuaciones Procesales
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="relative">
-              <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
-              <div className="space-y-6">
-                {actuaciones.map((act, index) => (
-                  <div key={act.id} className="relative pl-10">
-                    <div className="absolute left-2.5 w-3 h-3 rounded-full bg-primary border-2 border-background" />
-                    <div className="p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Badge variant="outline">{act.tipo}</Badge>
-                        <span className="text-xs text-muted-foreground">{act.fecha}</span>
-                        <code className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                          {act.responsableAnonimo}
-                        </code>
+            {actuaciones.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                No hay actuaciones registradas para este proceso.
+              </p>
+            ) : (
+              <div className="relative">
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
+                <div className="space-y-6">
+                  {actuaciones.map((act) => (
+                    <div key={act.id || `act-${act.fecha}-${act.tipo}`} className="relative pl-10">
+                      <div className="absolute left-2.5 w-3 h-3 rounded-full bg-primary border-2 border-background" />
+                      <div className="p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <Badge variant="outline">{act.tipo}</Badge>
+                          <span className="text-xs text-muted-foreground">{act.fecha}</span>
+                          <code className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                            {act.responsableAnonimo || act.funcionario}
+                          </code>
+                        </div>
+                        <p className="text-sm text-foreground mb-3">{act.descripcion}</p>
+                        
+                        {/* Botones de Ver y Descargar */}
+                        {act.tieneArchivo && (
+                          <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-border/50">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleVerDocumento(act.id)}
+                              className="text-xs"
+                            >
+                              <Eye className="w-3 h-3 mr-1" />
+                              Ver documento
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDescargarDocumento(act.id, act.descripcion)}
+                              className="text-xs"
+                            >
+                              <Download className="w-3 h-3 mr-1" />
+                              Descargar
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-sm text-foreground">{act.descripcion}</p>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

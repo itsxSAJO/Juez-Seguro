@@ -19,7 +19,7 @@ export interface JudicialProcess {
   dependencia: string;
   materia: string;
   tipoAccion: string;
-  estado: "activo" | "archivado" | "pendiente";
+  estado: string; // Puede ser: activo, archivado, pendiente, INICIADA, EN_TRAMITE, etc.
   actorAnonimo: string;
   demandadoAnonimo: string;
   juezAnonimo: string;
@@ -31,14 +31,24 @@ interface ResultsTableProps {
 }
 
 export const ResultsTable = ({ results, isLoading = false }: ResultsTableProps) => {
-  const getStatusBadge = (estado: JudicialProcess["estado"]) => {
-    const config = {
+  const getStatusBadge = (estado: string) => {
+    // Normalizar estado del backend a formato de display
+    const estadoNormalizado = estado?.toLowerCase() || "pendiente";
+    
+    const config: Record<string, { className: string; label: string }> = {
+      // Estados del frontend mock
       activo: { className: "badge-active", label: "Activo" },
       archivado: { className: "badge-archived", label: "Archivado" },
       pendiente: { className: "badge-pending", label: "Pendiente" },
+      // Estados del backend real (en minúsculas después de normalizar)
+      iniciada: { className: "badge-pending", label: "Iniciada" },
+      en_tramite: { className: "badge-active", label: "En Trámite" },
+      resuelta: { className: "badge-archived", label: "Resuelta" },
+      archivada: { className: "badge-archived", label: "Archivada" },
+      suspendida: { className: "badge-pending", label: "Suspendida" },
     };
     
-    const { className, label } = config[estado];
+    const { className, label } = config[estadoNormalizado] || { className: "badge-pending", label: estado || "Desconocido" };
     return (
       <Badge variant="outline" className={cn("font-medium", className)}>
         {label}
@@ -119,7 +129,7 @@ export const ResultsTable = ({ results, isLoading = false }: ResultsTableProps) 
                 </Badge>
               </div>
 
-              <Link to={`/proceso/${process.id}`} className="mt-4 block">
+              <Link to={`/ciudadano/proceso/${encodeURIComponent(process.numeroExpediente)}`} className="mt-4 block">
                 <Button variant="outline" size="sm" className="w-full">
                   <Eye className="w-4 h-4 mr-2" aria-hidden="true" />
                   Ver Detalle
@@ -172,7 +182,7 @@ export const ResultsTable = ({ results, isLoading = false }: ResultsTableProps) 
                   {getStatusBadge(process.estado)}
                 </TableCell>
                 <TableCell className="text-center">
-                  <Link to={`/proceso/${process.id}`}>
+                  <Link to={`/ciudadano/proceso/${encodeURIComponent(process.numeroExpediente)}`}>
                     <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary">
                       <Eye className="w-4 h-4 mr-1.5" aria-hidden="true" />
                       Ver

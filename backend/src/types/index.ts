@@ -135,6 +135,18 @@ export interface CausaPublica {
   secretarioPseudonimo?: string;
 }
 
+// Vista pública de actuación (para ciudadanos) - HU-UP-001
+export interface ActuacionPublica {
+  actuacionId: string;
+  tipoActuacion: string;
+  fechaActuacion: Date;
+  descripcion: string;
+  estado: string;
+  funcionarioPseudonimo: string; // Solo pseudónimo, nunca ID real
+  tieneArchivo: boolean; // Indica si hay documento descargable
+  mimeType?: string; // Tipo MIME del archivo
+}
+
 // Mapeado a la tabla 'expedientes'
 export interface Expediente {
   expediente_id: number;
