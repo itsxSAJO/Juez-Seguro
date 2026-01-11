@@ -11,14 +11,18 @@ import fs from "fs/promises";
 import path from "path";
 import { auditService } from "./audit.service.js";
 import type { MetadatosFirma, VerificacionFirma } from "../types/index.js";
+import { config } from "../config/index.js";
 
 // ============================================================================
-// CONFIGURACIÓN
+// CONFIGURACIÓN PKI (Centralizada - CWE-798 Mitigado)
+// ============================================================================
+// Rutas y credenciales importadas desde config/index.ts
+// PFX_PASSWORD es OBLIGATORIO via getRequiredEnv() - sin fallback hardcodeado
 // ============================================================================
 
-const PKI_BASE_PATH = process.env.PKI_JUECES_CERTS_PATH || "./certs/jueces";
-const CA_CERT_PATH = process.env.PKI_CA_CERT_PATH || "./certs/ca/ca.crt";
-const PFX_PASSWORD = process.env.PFX_PASSWORD || "Seguridad2026";
+const PKI_BASE_PATH = config.pki.basePath;
+const CA_CERT_PATH = config.pki.caCertPath;
+const PFX_PASSWORD = config.pki.pfxPassword;
 
 // Algoritmo de firma
 const SIGNATURE_ALGORITHM = "SHA256";
