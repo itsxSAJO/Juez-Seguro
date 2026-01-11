@@ -150,9 +150,7 @@ const ExpedienteCausa = () => {
       documentoId: doc.id,
     })),
     ...audiencias.map((aud) => {
-      // Para la línea del tiempo, usamos fecha de creación (cuándo se programó)
-      // No la fecha programada de la audiencia
-      const fechaCreacion = aud.fechaCreacion || aud.fecha_creacion || new Date().toISOString();
+      // Usamos la fecha programada de la audiencia para la línea del tiempo
       const fechaProgramada = aud.fechaHora || aud.fecha_hora || aud.fecha || new Date().toISOString();
       const tipoCapitalizado = aud.tipo ? aud.tipo.charAt(0).toUpperCase() + aud.tipo.slice(1) : 'Audiencia';
       const fechaFormateada = format(new Date(fechaProgramada), "dd/MM/yyyy HH:mm", { locale: es });
@@ -160,7 +158,7 @@ const ExpedienteCausa = () => {
         id: aud.id,
         tipo: "audiencia" as const,
         titulo: `Audiencia de ${tipoCapitalizado} programada`,
-        fecha: fechaCreacion, // Usamos fecha de creación para el ordenamiento
+        fecha: fechaProgramada, // Usamos fecha programada para el ordenamiento
         descripcion: `Programada para ${fechaFormateada} - ${aud.sala || 'Sin sala asignada'}${aud.modalidad ? ` (${aud.modalidad})` : ''}`,
         autor: "Sistema",
       };
