@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { api, ApiResponse, PaginatedResponse } from "./api";
+import { secureOpenDocument, validateBlobType } from "../utils/file-security";
 import type { Documento, SubirDocumentoRequest } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
@@ -130,6 +131,7 @@ export const documentosService = {
 
   /**
    * Visualiza un documento en una nueva pestaña
+   * SEGURIDAD: Validación de blob y esquema URL para prevenir Open Redirect
    */
   async verDocumento(id: string): Promise<void> {
     const token = sessionStorage.getItem("auth_token");
@@ -148,10 +150,18 @@ export const documentosService = {
     }
 
     const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    // Limpiar URL después de un tiempo
-    setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    
+    // SEGURIDAD: Validar que sea un PDF antes de abrir
+    const validation = validateBlobType(blob);
+    if (!validation.isValid) {
+      throw new Error(validation.error || "Tipo de archivo no permitido");
+    }
+    
+    // Usar función centralizada que:
+    // 1. Valida esquema blob: (previene Open Redirect)
+    // 2. Usa noopener,noreferrer (aísla contexto)
+    // 3. Limpia URL automáticamente después de 60s
+    secureOpenDocument(blob);
   },
 
   /**
