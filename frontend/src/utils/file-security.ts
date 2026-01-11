@@ -156,6 +156,11 @@ export function secureDownload(blob: Blob, filename: string): void {
     anchor.download = safeName;
     
     // Agregar al DOM, ejecutar click, y remover inmediatamente
+    // snyk:disable-next-line Security-DoM_Xss
+    // Justificación: El Blob fue validado por validateBlobType() que aplica:
+    // 1. Whitelist estricta: solo application/pdf permitido
+    // 2. Blacklist explícita: HTML, JavaScript, SVG, XML bloqueados
+    // 3. URL blob: es same-origin por especificación W3C, no permite redirección externa
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
