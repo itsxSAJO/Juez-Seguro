@@ -68,6 +68,7 @@ const DB_USERS_PASSWORD = getRequiredEnv("DB_USERS_PASSWORD", "Contraseña BD de
 const DB_CASES_PASSWORD = getRequiredEnv("DB_CASES_PASSWORD", "Contraseña BD de casos");
 const DB_LOGS_PASSWORD = getRequiredEnv("DB_LOGS_PASSWORD", "Contraseña BD de logs");
 const PSEUDONIMO_HMAC_SECRET = getRequiredEnv("PSEUDONIMO_HMAC_SECRET", "Secreto HMAC para pseudónimos de jueces");
+const PFX_PASSWORD = getRequiredEnv("PFX_PASSWORD", "Contraseña del almacén de claves PKI (.pfx/.p12)");
 
 // ============================================================================
 // CONFIGURACIÓN EXPORTADA
@@ -147,6 +148,13 @@ export const config = {
 
   // Frontend URL (para enlaces en correos)
   frontendUrl: getOptionalEnv("FRONTEND_URL", "http://localhost:8080"),
+
+  // PKI - Infraestructura de Clave Pública (Firma Digital)
+  pki: {
+    basePath: getOptionalEnv("PKI_JUECES_CERTS_PATH", "./certs/jueces"),
+    caCertPath: getOptionalEnv("PKI_CA_CERT_PATH", "./certs/ca/ca.crt"),
+    pfxPassword: PFX_PASSWORD,  // Sin fallback - validado arriba (CWE-798)
+  },
 };
 
 export default config;
