@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FuncionariosLayout } from "@/components/funcionarios/FuncionariosLayout";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import { getCausaById, getDocumentos, Causa, Documento } from "@/lib/funcionario
 import { audienciasService, AudienciaConHistorial } from "@/services/audiencias.service";
 import { causasService, HistorialReprogramacion } from "@/services/causas.service";
 import { notificacionesProcesalesService, NotificacionProcesal } from "@/services/notificaciones-procesales.service";
+import { secureOpenDocument, secureDownload, validateBlobType, sanitizeFilename } from "@/utils/file-security";
 import {
   ArrowLeft,
   FileText,
@@ -52,6 +54,7 @@ const ExpedienteCausa = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [causa, setCausa] = useState<Causa | null>(null);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [audiencias, setAudiencias] = useState<AudienciaConHistorial[]>([]);
@@ -206,12 +209,20 @@ const ExpedienteCausa = () => {
     if (file) {
       // Validar que sea PDF
       if (file.type !== "application/pdf") {
-        alert("Solo se permiten archivos PDF");
+        toast({
+          variant: "destructive",
+          title: "Archivo no permitido",
+          description: "Solo se permiten archivos PDF",
+        });
         return;
       }
       // Validar tamaño (50MB)
       if (file.size > 50 * 1024 * 1024) {
-        alert("El archivo no debe exceder 50MB");
+        toast({
+          variant: "destructive",
+          title: "Archivo muy grande",
+          description: "El archivo no debe exceder 50MB",
+        });
         return;
       }
       setSelectedFile(file);
@@ -220,7 +231,11 @@ const ExpedienteCausa = () => {
 
   const handleUploadDocument = async () => {
     if (!selectedFile || !tipoDocumento || !id) {
-      alert("Por favor complete todos los campos");
+      toast({
+        variant: "destructive",
+        title: "Campos incompletos",
+        description: "Por favor complete todos los campos",
+      });
       return;
     }
 
@@ -251,15 +266,11 @@ const ExpedienteCausa = () => {
             contenido: base64,
           };
 
-          console.log("📤 Enviando documento:", {
-            causaId: payload.causaId,
-            tipo: payload.tipo,
-            nombreOriginal: payload.nombreOriginal,
-            contenidoLength: payload.contenido.length,
-          });
+          // Obtener URL de API desde variables de entorno
+          const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
           // Enviar al backend
-          const response = await fetch("http://localhost:3000/api/documentos", {
+          const response = await fetch(`${apiUrl}/documentos`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -270,12 +281,10 @@ const ExpedienteCausa = () => {
 
           if (!response.ok) {
             const error = await response.json();
-            console.error("❌ Error del servidor:", error);
             throw new Error(error.error || error.details?.[0]?.message || "Error al subir el documento");
           }
 
-          const result = await response.json();
-          console.log("✅ Documento subido:", result);
+          await response.json();
           
           // Actualizar lista de documentos
           const updatedDocs = await getDocumentos(id);
@@ -286,30 +295,45 @@ const ExpedienteCausa = () => {
           setSelectedFile(null);
           setTipoDocumento("");
           
-          alert("Documento subido exitosamente");
+          toast({
+            title: "Documento subido",
+            description: "El documento se ha subido exitosamente",
+          });
         } catch (error) {
-          console.error("Error uploading document:", error);
-          alert(error instanceof Error ? error.message : "Error al subir el documento");
+          toast({
+            variant: "destructive",
+            title: "Error al subir",
+            description: error instanceof Error ? error.message : "Error al subir el documento",
+          });
           setUploading(false);
         }
       };
 
       reader.onerror = () => {
-        alert("Error al leer el archivo");
+        toast({
+          variant: "destructive",
+          title: "Error de lectura",
+          description: "Error al leer el archivo",
+        });
         setUploading(false);
       };
     } catch (error) {
-      console.error("Error uploading document:", error);
-      alert(error instanceof Error ? error.message : "Error al subir el documento");
+      toast({
+        variant: "destructive",
+        title: "Error al subir",
+        description: error instanceof Error ? error.message : "Error al subir el documento",
+      });
       setUploading(false);
     }
   };
 
   // Función para ver un documento en una nueva pestaña
+  // SEGURIDAD: Validación de MIME type para prevenir DOM XSS
   const handleVerDocumento = async (docId: string) => {
     try {
       const token = sessionStorage.getItem("auth_token");
-      const response = await fetch(`http://localhost:3000/api/documentos/${docId}/ver`, {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+      const response = await fetch(`${apiUrl}/documentos/${docId}/ver`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -321,21 +345,38 @@ const ExpedienteCausa = () => {
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      // Limpiar URL después de un tiempo
-      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+      
+      // SEGURIDAD: Validar tipo de archivo antes de abrir
+      const validation = validateBlobType(blob);
+      if (!validation.isValid) {
+        console.error("[SEGURIDAD] Intento de abrir archivo no permitido:", validation.detectedType);
+        toast({
+          variant: "destructive",
+          title: "Error de seguridad",
+          description: validation.error || "Tipo de archivo no permitido",
+        });
+        return;
+      }
+
+      // Abrir documento de forma segura
+      secureOpenDocument(blob);
     } catch (error) {
       console.error("Error al ver documento:", error);
-      alert("No se pudo abrir el documento");
+      toast({
+        variant: "destructive",
+        title: "Error al abrir",
+        description: error instanceof Error ? error.message : "No se pudo abrir el documento",
+      });
     }
   };
 
   // Función para descargar un documento
+  // SEGURIDAD: Sanitización de nombre y validación de MIME type para prevenir DOM XSS
   const handleDescargarDocumento = async (docId: string, nombreArchivo: string) => {
     try {
       const token = sessionStorage.getItem("auth_token");
-      const response = await fetch(`http://localhost:3000/api/documentos/${docId}/descargar`, {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+      const response = await fetch(`${apiUrl}/documentos/${docId}/descargar`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -347,21 +388,31 @@ const ExpedienteCausa = () => {
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
       
-      // Crear enlace temporal para descargar
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = nombreArchivo;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // SEGURIDAD: Validar tipo de archivo antes de descargar
+      const validation = validateBlobType(blob);
+      if (!validation.isValid) {
+        console.error("[SEGURIDAD] Intento de descargar archivo no permitido:", validation.detectedType);
+        toast({
+          variant: "destructive",
+          title: "Error de seguridad",
+          description: validation.error || "Tipo de archivo no permitido",
+        });
+        return;
+      }
+
+      // SEGURIDAD: Sanitizar nombre de archivo
+      const safeName = sanitizeFilename(nombreArchivo);
       
-      // Limpiar URL
-      window.URL.revokeObjectURL(url);
+      // Descargar de forma segura
+      secureDownload(blob, safeName);
     } catch (error) {
       console.error("Error al descargar documento:", error);
-      alert("No se pudo descargar el documento");
+      toast({
+        variant: "destructive",
+        title: "Error al descargar",
+        description: error instanceof Error ? error.message : "No se pudo descargar el documento",
+      });
     }
   };
 
