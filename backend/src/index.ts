@@ -7,9 +7,11 @@ import express, { type Request, type Response, type NextFunction } from "express
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { config } from "./config/index.js";
+import { configBase, setSecretsConfig } from "./config/index.js";
 import { testConnections, closeConnections } from "./db/connection.js";
 import { auditService } from "./services/audit.service.js";
+import { secretsManager } from "./services/secrets-manager.service.js";
+import { reiniciarTransporter } from "./services/email.service.js";
 
 // Importar rutas
 import authRoutes from "./routes/auth.routes.js";
@@ -59,16 +61,16 @@ app.use(helmet({
 
 // CORS
 app.use(cors({
-  origin: config.cors.origin,
-  credentials: config.cors.credentials,
+  origin: configBase.cors.origin,
+  credentials: configBase.cors.credentials,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
 // Rate Limiting - Prevenir ataques de fuerza bruta
 const generalLimiter = rateLimit({
-  windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
+  windowMs: configBase.rateLimit.windowMs,
+  max: configBase.rateLimit.maxRequests,
   message: {
     success: false,
     error: "Demasiadas solicitudes. Por favor, intente más tarde.",
@@ -194,14 +196,14 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   }
 
   // No exponer detalles de errores en producción
-  const message = config.nodeEnv === "production" 
+  const message = configBase.nodeEnv === "production" 
     ? "Error interno del servidor" 
     : err.message;
 
   res.status(500).json({
     success: false,
     error: message,
-    ...(config.nodeEnv !== "production" && { stack: err.stack }),
+    ...(configBase.nodeEnv !== "production" && { stack: err.stack }),
   });
 });
 
@@ -212,35 +214,66 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 const startServer = async () => {
   try {
     console.log("🚀 Iniciando Juez Seguro Backend...");
-    console.log(`📍 Ambiente: ${config.nodeEnv}`);
+    console.log(`📍 Ambiente: ${configBase.nodeEnv}`);
 
-    // Probar conexiones a bases de datos
+    // ========================================================================
+    // PASO 1: Inicializar SecretsManager (carga secretos desde db_secrets)
+    // ========================================================================
+    console.log("🔐 Inicializando gestor de secretos...");
+    try {
+      await secretsManager.initialize(
+        configBase.masterKeyPassword,
+        configBase.dbSecrets
+      );
+      
+      // Cargar secretos en la configuración
+      setSecretsConfig({
+        jwtSecret: secretsManager.getRequiredSecret("JWT_SECRET", "Secreto para firmar tokens"),
+        pseudonimoHmacSecret: secretsManager.getRequiredSecret("HMAC_SALT", "Salt para pseudónimos"),
+        pfxPassword: secretsManager.getRequiredSecret("PFX_PASSWORD", "Password certificados PKI"),
+        smtpUser: secretsManager.getSecret("SMTP_USER") ?? undefined,
+        smtpPassword: secretsManager.getSecret("SMTP_PASSWORD") ?? undefined,
+      });
+      
+      // Reiniciar transporter de email para usar las credenciales de db_secrets
+      reiniciarTransporter();
+      
+      console.log("✅ Secretos cargados desde db_secrets");
+    } catch (secretsError) {
+      console.error("❌ Error al cargar secretos:", secretsError);
+      throw secretsError;
+    }
+
+    // ========================================================================
+    // PASO 2: Probar conexiones a bases de datos principales
+    // ========================================================================
     console.log("🔌 Conectando a bases de datos...");
     const dbStatus = await testConnections();
     console.log("✅ Conexiones establecidas:", dbStatus);
 
     // Iniciar servidor HTTP
-    const server = app.listen(config.port, () => {
+    const server = app.listen(configBase.port, () => {
       console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                    JUEZ SEGURO BACKEND                     ║
 ║              Sistema Judicial Seguro v1.0.0               ║
 ╠═══════════════════════════════════════════════════════════╣
-║  🌐 Servidor:     http://localhost:${config.port}                   ║
-║  📊 Health:       http://localhost:${config.port}/api/health        ║
-║  🔐 Auth:         http://localhost:${config.port}/api/auth          ║
-║  👥 Usuarios:     http://localhost:${config.port}/api/usuarios      ║
-║  📁 Causas:       http://localhost:${config.port}/api/causas        ║
-║  📄 Documentos:   http://localhost:${config.port}/api/documentos    ║
-║  🗓️  Audiencias:   http://localhost:${config.port}/api/audiencias   ║
-║  📬 Notificaciones: http://localhost:${config.port}/api/notificaciones║
-║  📋 Auditoría:    http://localhost:${config.port}/api/auditoria     ║
-║  🏛️  Portal Público: http://localhost:${config.port}/api/publico    ║
-║  ⚖️  Decisiones:   http://localhost:${config.port}/api/decisiones   ║
-║  📜 Notif.Proc:   http://localhost:${config.port}/api/notificaciones-procesales ║
-║  ⏱️  Plazos:       http://localhost:${config.port}/api/plazos        ║
+║  🌐 Servidor:     http://localhost:${configBase.port}                   ║
+║  📊 Health:       http://localhost:${configBase.port}/api/health        ║
+║  🔐 Auth:         http://localhost:${configBase.port}/api/auth          ║
+║  👥 Usuarios:     http://localhost:${configBase.port}/api/usuarios      ║
+║  📁 Causas:       http://localhost:${configBase.port}/api/causas        ║
+║  📄 Documentos:   http://localhost:${configBase.port}/api/documentos    ║
+║  🗓️  Audiencias:   http://localhost:${configBase.port}/api/audiencias   ║
+║  📬 Notificaciones: http://localhost:${configBase.port}/api/notificaciones║
+║  📋 Auditoría:    http://localhost:${configBase.port}/api/auditoria     ║
+║  🏛️  Portal Público: http://localhost:${configBase.port}/api/publico    ║
+║  ⚖️  Decisiones:   http://localhost:${configBase.port}/api/decisiones   ║
+║  📜 Notif.Proc:   http://localhost:${configBase.port}/api/notificaciones-procesales ║
+║  ⏱️  Plazos:       http://localhost:${configBase.port}/api/plazos        ║
 ╠═══════════════════════════════════════════════════════════╣
-║  Common Criteria: FIA ✓ | FDP ✓ | FAU ✓                   ║
+║  Common Criteria: FIA ✓ | FDP ✓ | FAU ✓ | FCS ✓           ║
+║  Secretos: ${secretsManager.listSecretNames().length} cargados desde db_secrets              ║
 ╚═══════════════════════════════════════════════════════════╝
       `);
 
@@ -254,8 +287,9 @@ const startServer = async () => {
         usuarioId: null,
         datosAfectados: {
           version: "1.0.0",
-          ambiente: config.nodeEnv,
-          puerto: config.port,
+          ambiente: configBase.nodeEnv,
+          puerto: configBase.port,
+          secretosCargados: secretsManager.listSecretNames().length,
         },
         ipOrigen: "localhost",
         userAgent: "system",
@@ -288,6 +322,7 @@ const startServer = async () => {
       server.close(async () => {
         console.log("🔌 Cerrando conexiones de base de datos...");
         await closeConnections();
+        await secretsManager.close();
         console.log("👋 Servidor cerrado correctamente.");
         process.exit(0);
       });

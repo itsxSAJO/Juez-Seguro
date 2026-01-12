@@ -2,8 +2,12 @@
 # JUEZ SEGURO - Infraestructura de Bases de Datos
 # Sistema Judicial Electrónico con Common Criteria
 # ============================================================================
-# Este archivo configura tres nodos PostgreSQL aislados en una red interna
+# Este archivo configura CUATRO nodos PostgreSQL aislados en una red interna
 # para cumplir con los requisitos de protección de flujo de información.
+# - db_usuarios: FIA (Identificación y Autenticación)
+# - db_casos:    FDP (Protección de Datos)
+# - db_logs:     FAU (Auditoría)
+# - db_secrets:  FCS (Soporte Criptográfico) - NUEVO
 # ============================================================================
 
 services:
@@ -95,9 +99,39 @@ services:
       start_period: 10s
 
   # ----------------------------------------------------------------
-  # 4. BACKEND API - Servidor de Aplicación Node.js/TypeScript
+  # 4. BDD SECRETOS CRIPTOGRÁFICOS (FCS - Cryptographic Support)
+  # Contiene: Secretos encriptados con AES-256-GCM
+  # Propósito: Almacenamiento seguro de claves y secretos del sistema
+  #            La MASTER_KEY nunca se almacena, solo en memoria
+  # ----------------------------------------------------------------
+  db_secrets:
+    image: postgres:15-alpine
+    container_name: juez_seguro_db_secrets
+    restart: always
+    environment:
+      POSTGRES_DB: db_secrets
+      POSTGRES_USER: admin_secrets
+      POSTGRES_PASSWORD: ${DB_PASS_SECRETS}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - ./scripts/secrets:/docker-entrypoint-initdb.d:ro
+      - pg_data_secrets:/var/lib/postgresql/data
+    networks:
+      - backend_secure_net
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin_secrets -d db_secrets"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------
+  # 5. BACKEND API - Servidor de Aplicación Node.js/TypeScript
   # Maneja la lógica de negocio y el almacenamiento seguro de documentos
   # Sprint 3: Integración PKI para firma electrónica
+  # Sprint 4: Secretos desde BD (db_secrets)
   # ----------------------------------------------------------------
   backend_api:
     build:
@@ -128,8 +162,20 @@ services:
       DB_LOGS_USER: admin_logs
       DB_LOGS_PASSWORD: ${DB_PASS_LOGS}
       
-      # Configuración JWT
-      JWT_SECRET: ${JWT_SECRET}
+      # ============================================================
+      # Base de Datos de Secretos (FCS - Cryptographic Support)
+      # ============================================================
+      DB_SECRETS_HOST: db_secrets
+      DB_SECRETS_PORT: 5432
+      DB_SECRETS_NAME: db_secrets
+      DB_SECRETS_USER: admin_secrets
+      DB_SECRETS_PASSWORD: ${DB_PASS_SECRETS}
+      
+      # Clave maestra para desencriptar secretos (ÚNICO secreto en ENV)
+      # Se usa PBKDF2 para derivar la clave AES-256
+      MASTER_KEY_PASSWORD: ${MASTER_KEY_PASSWORD}
+      
+      # Configuración JWT (ahora cargado desde db_secrets)
       JWT_EXPIRATION: ${JWT_EXPIRATION:-8h}
       
       # Ruta de almacenamiento seguro para documentos
@@ -142,27 +188,19 @@ services:
       PKI_CA_CERT_PATH: /app/certs/ca/ca.crt
       PKI_JUECES_CERTS_PATH: /app/certs/jueces
       
-      # Password para archivos PFX (En producción usar Docker Secrets o Vault)
-      PFX_PASSWORD: ${PFX_PASSWORD:-Seguridad2026}
-      
-      # Ruta del secreto JWT desde archivo
-      JWT_SECRET_FILE: /app/certs/jwt_secret.key
+      # Password para archivos PFX (cargado desde db_secrets)
+      # PFX_PASSWORD: ahora en db_secrets
       
       # Ruta de almacenamiento WORM para decisiones firmadas
       DECISIONES_FIRMADAS_PATH: /app/storage/decisiones_firmadas
-      
-      # Salt para anonimización
-      ANONYMIZATION_SALT_FILE: /app/certs/anonymization.salt
       
     volumes:
       # Almacenamiento de expedientes (existente)
       - secure_docs_storage:/app/storage/expedientes_seguros
       
-      # Sprint 3: Infraestructura PKI (Solo lectura)
+      # Sprint 3: Infraestructura PKI (Solo lectura) - Solo certificados públicos
       - ./certs/ca:/app/certs/ca:ro
       - ./certs/jueces:/app/certs/jueces:ro
-      - ./certs/jwt_secret.key:/app/certs/jwt_secret.key:ro
-      - ./certs/anonymization.salt:/app/certs/anonymization.salt:ro
       
       # Sprint 3: Almacenamiento WORM para decisiones firmadas
       - secure_decisions_storage:/app/storage/decisiones_firmadas
@@ -176,6 +214,8 @@ services:
         condition: service_healthy
       db_logs:
         condition: service_healthy
+      db_secrets:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
@@ -184,7 +224,7 @@ services:
       start_period: 40s
 
   # ----------------------------------------------------------------
-  # 5. ADMINER - Panel de Administración (Solo Desarrollo)
+  # 6. ADMINER - Panel de Administración (Solo Desarrollo)
   # Interfaz web para gestionar las bases de datos durante desarrollo
   # ----------------------------------------------------------------
   adminer:
@@ -203,6 +243,7 @@ services:
       - db_usuarios
       - db_casos
       - db_logs
+      - db_secrets
 
 # ============================================================================
 # REDES - Aislamiento de Tráfico
@@ -225,6 +266,10 @@ volumes:
     name: juez_seguro_cases_data
   pg_data_logs:
     name: juez_seguro_logs_data
+  pg_data_secrets:
+    name: juez_seguro_secrets_data
+    # Volumen para secretos encriptados (FCS)
+    # Los datos están encriptados con AES-256-GCM
   secure_docs_storage:
     name: juez_seguro_secure_docs
     # Volumen persistente para almacenamiento WORM (Write Once Read Many)

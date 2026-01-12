@@ -16,16 +16,20 @@ import { auditService } from "./audit.service.js";
  */
 class PseudonimosService {
   /**
-   * Salt secreto para HMAC - Configurado desde config centralizado
-   * CRÍTICO: Este valor NUNCA debe ser expuesto o almacenado en la BD
-   * SEGURIDAD: Validado al inicio por config (Fail Fast)
+   * Cache del secreto HMAC (lazy loading)
+   * Se carga en el primer uso, después de que SecretsManager esté inicializado
    */
-  private readonly HMAC_SECRET: string;
+  private _hmacSecret: string | null = null;
 
-  constructor() {
-    // Secreto importado desde configuración centralizada
-    // La validación de existencia ya se realizó en config/index.ts (Fail Fast)
-    this.HMAC_SECRET = config.security.pseudonimoHmacSecret;
+  /**
+   * Obtiene el secreto HMAC de forma lazy
+   * Esto permite que el servicio se instancie antes de SecretsManager
+   */
+  private get HMAC_SECRET(): string {
+    if (!this._hmacSecret) {
+      this._hmacSecret = config.security.pseudonimoHmacSecret;
+    }
+    return this._hmacSecret;
   }
 
   /**

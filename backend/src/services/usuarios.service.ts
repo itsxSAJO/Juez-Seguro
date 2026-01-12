@@ -15,6 +15,22 @@ import type { Funcionario, FuncionarioPublico, UserRole, EstadoCuenta, Rol } fro
 
 // Constante para identificar el rol de JUEZ
 const ROL_JUEZ_ID = 2; // Según el esquema: ADMIN_CJ=1, JUEZ=2, SECRETARIO=3
+const ROL_SECRETARIO_ID = 3;
+const ROL_ADMIN_ID = 1;
+
+/**
+ * Mapea rol_id a tipo de rol para el servicio de email
+ */
+function obtenerTipoRol(rolId: number): "JUEZ" | "SECRETARIO" | "ADMIN" {
+  switch (rolId) {
+    case ROL_JUEZ_ID:
+      return "JUEZ";
+    case ROL_SECRETARIO_ID:
+      return "SECRETARIO";
+    default:
+      return "ADMIN";
+  }
+}
 
 /**
  * Genera una contraseña segura aleatoria
@@ -132,11 +148,15 @@ class FuncionariosService {
 
       const funcionario = result.rows[0] as Funcionario;
 
+      // Determinar el tipo de rol para redirección de email (modo educativo)
+      const tipoRol = obtenerTipoRol(input.rolId);
+
       // Enviar correo con las credenciales al funcionario usando el servicio de email
       const correoEnviado = await emailService.enviarCredenciales(
         input.correoInstitucional.toLowerCase(),
         input.nombresCompletos,
-        passwordTemporal
+        passwordTemporal,
+        tipoRol // Pasar rol para redirección en modo educativo
       );
 
       if (!correoEnviado) {

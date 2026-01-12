@@ -11,18 +11,29 @@ import fs from "fs/promises";
 import path from "path";
 import { auditService } from "./audit.service.js";
 import type { MetadatosFirma, VerificacionFirma } from "../types/index.js";
-import { config } from "../config/index.js";
+import { configBase } from "../config/index.js";
+import { secretsManager } from "./secrets-manager.service.js";
 
 // ============================================================================
-// CONFIGURACIÓN PKI (Centralizada - CWE-798 Mitigado)
+// CONFIGURACIÓN PKI (Lazy Loading - CWE-798 Mitigado)
 // ============================================================================
-// Rutas y credenciales importadas desde config/index.ts
-// PFX_PASSWORD es OBLIGATORIO via getRequiredEnv() - sin fallback hardcodeado
+// Las rutas se cargan de configBase (disponible inmediatamente)
+// PFX_PASSWORD se obtiene de SecretsManager cuando se necesita
 // ============================================================================
 
-const PKI_BASE_PATH = config.pki.basePath;
-const CA_CERT_PATH = config.pki.caCertPath;
-const PFX_PASSWORD = config.pki.pfxPassword;
+const PKI_BASE_PATH = configBase.pki.basePath;
+const CA_CERT_PATH = configBase.pki.caCertPath;
+
+/**
+ * Obtiene la contraseña PFX de forma lazy desde SecretsManager
+ */
+const getPfxPassword = (): string => {
+  const password = secretsManager.getSecret("PFX_PASSWORD");
+  if (!password) {
+    throw new Error("PFX_PASSWORD no disponible en SecretsManager");
+  }
+  return password;
+};
 
 // Algoritmo de firma
 const SIGNATURE_ALGORITHM = "SHA256";

@@ -5,43 +5,97 @@
 
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
+import { secretsManager } from "./secrets-manager.service";
+
+// ============================================================================
+// CONFIGURACIÓN PARA ENTORNO EDUCATIVO
+// En producción real, los correos irían al destinatario real.
+// En este proyecto educativo, redirigimos a correos de prueba.
+// ============================================================================
+
+/**
+ * Modo educativo: redirige correos institucionales a correos de prueba
+ * Esto permite probar el sistema sin cuentas institucionales reales
+ */
+const EMAIL_EDUCATIVO_HABILITADO = process.env.EMAIL_MODO_EDUCATIVO === "true";
+
+// Correos de prueba para el entorno educativo
+const CORREOS_PRUEBA = {
+  JUEZ: "juez.jz15@gmail.com",
+  SECRETARIA: "secretaria.juez20@gmail.com",
+  DEFAULT: "juez.jz15@gmail.com", // Fallback para otros roles
+};
+
+/**
+ * Determina el correo real de destino según el rol del usuario
+ * En modo educativo, redirige a los correos de prueba
+ */
+const obtenerCorreoDestino = (
+  correoOriginal: string,
+  rolUsuario?: "JUEZ" | "SECRETARIO" | "ADMIN"
+): string => {
+  if (!EMAIL_EDUCATIVO_HABILITADO) {
+    return correoOriginal;
+  }
+
+  // En modo educativo, redirigir según el rol
+  switch (rolUsuario) {
+    case "JUEZ":
+      return CORREOS_PRUEBA.JUEZ;
+    case "SECRETARIO":
+      return CORREOS_PRUEBA.SECRETARIA;
+    case "ADMIN":
+      return CORREOS_PRUEBA.DEFAULT;
+    default:
+      // Si no hay rol, intentar inferir del correo
+      if (correoOriginal.toLowerCase().includes("juez")) {
+        return CORREOS_PRUEBA.JUEZ;
+      } else if (correoOriginal.toLowerCase().includes("secretari")) {
+        return CORREOS_PRUEBA.SECRETARIA;
+      }
+      return CORREOS_PRUEBA.DEFAULT;
+  }
+};
 
 // Configuración del transporter según el entorno
 const createTransporter = (): Transporter => {
-  const isProduction = process.env.NODE_ENV === "production";
+  // Intentar obtener credenciales desde SecretsManager
+  const smtpUser = secretsManager.getSecret("SMTP_USER");
+  const smtpPass = secretsManager.getSecret("SMTP_PASSWORD");
 
-  if (isProduction) {
-    // Configuración para producción (SMTP real)
+  if (smtpUser && smtpPass) {
+    console.log("📧 SMTP configurado con credenciales desde db_secrets");
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST || "smtp.gmail.com",
       port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true", // true para 465, false para otros
+      secure: false, // Gmail usa STARTTLS en puerto 587
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
+  }
+
+  // Fallback: usar variables de entorno (desarrollo)
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    console.log("📧 SMTP configurado con variables de entorno");
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: parseInt(process.env.SMTP_PORT || "587"),
+      secure: false,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
     });
-  } else {
-    // Para desarrollo, usar Ethereal (correos de prueba)
-    // O si hay credenciales configuradas, usarlas
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      return nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: parseInt(process.env.SMTP_PORT || "587"),
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-    }
-    
-    // Sin credenciales, crear un transporter de prueba que solo loguea
-    return nodemailer.createTransport({
-      streamTransport: true,
-      newline: "unix",
-    });
   }
+
+  // Sin credenciales, crear un transporter de prueba que solo loguea
+  console.log("📧 SMTP no configurado - modo simulación (solo logs)");
+  return nodemailer.createTransport({
+    streamTransport: true,
+    newline: "unix",
+  });
 };
 
 let transporter: Transporter | null = null;
@@ -53,23 +107,42 @@ const getTransporter = (): Transporter => {
   return transporter;
 };
 
+/**
+ * Reinicia el transporter (útil después de cargar secretos)
+ */
+export const reiniciarTransporter = (): void => {
+  transporter = null;
+  console.log("📧 Transporter SMTP reiniciado");
+};
+
 interface EmailOptions {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  rolDestinatario?: "JUEZ" | "SECRETARIO" | "ADMIN";
 }
 
 /**
  * Servicio de Email
+ * Cumple con FIA_UAU.2 - Notificación segura de credenciales
  */
 class EmailService {
   private fromAddress: string;
   private fromName: string;
 
   constructor() {
-    this.fromAddress = process.env.SMTP_FROM || "noreply@judicatura.gob.ec";
+    this.fromAddress =
+      process.env.SMTP_FROM || "consejo.judicatura20@gmail.com";
     this.fromName = process.env.SMTP_FROM_NAME || "Sistema Juez Seguro";
+  }
+
+  /**
+   * Verifica si SMTP está configurado
+   */
+  isConfigured(): boolean {
+    const smtpUser = secretsManager.getSecret("SMTP_USER");
+    return !!(smtpUser || process.env.SMTP_USER);
   }
 
   /**
@@ -78,30 +151,50 @@ class EmailService {
   async send(options: EmailOptions): Promise<boolean> {
     try {
       const transport = getTransporter();
-      
+
+      // En modo educativo, redirigir al correo de prueba correspondiente
+      const correoDestino = obtenerCorreoDestino(
+        options.to,
+        options.rolDestinatario
+      );
+
       const mailOptions = {
         from: `"${this.fromName}" <${this.fromAddress}>`,
-        to: options.to,
+        to: correoDestino,
         subject: options.subject,
         html: options.html,
         text: options.text || this.htmlToText(options.html),
       };
 
-      const info = await transport.sendMail(mailOptions);
+      // Verificar si tenemos SMTP configurado
+      const smtpUser = secretsManager.getSecret("SMTP_USER");
+      const tieneSmtp = !!(smtpUser || process.env.SMTP_USER);
 
-      // En desarrollo sin SMTP configurado, mostrar en consola
-      if (!process.env.SMTP_USER) {
+      if (!tieneSmtp) {
+        // Sin SMTP configurado, mostrar en consola
         console.log("\n" + "=".repeat(60));
         console.log("📧 CORREO (modo desarrollo - no enviado realmente)");
         console.log("=".repeat(60));
         console.log(`Para: ${options.to}`);
+        if (EMAIL_EDUCATIVO_HABILITADO && correoDestino !== options.to) {
+          console.log(`(Redirigido a: ${correoDestino})`);
+        }
         console.log(`Asunto: ${options.subject}`);
         console.log("-".repeat(60));
         console.log(options.text || this.htmlToText(options.html));
         console.log("=".repeat(60) + "\n");
-      } else {
-        console.log(`✅ Correo enviado a ${options.to}: ${info.messageId}`);
+        return true;
       }
+
+      // Enviar correo real
+      const info = await transport.sendMail(mailOptions);
+
+      console.log(`✅ Correo enviado exitosamente`);
+      console.log(`   📬 Destinatario original: ${options.to}`);
+      if (EMAIL_EDUCATIVO_HABILITADO && correoDestino !== options.to) {
+        console.log(`   🔄 Redirigido a (modo educativo): ${correoDestino}`);
+      }
+      console.log(`   📨 Message ID: ${info.messageId}`);
 
       return true;
     } catch (error) {
@@ -116,8 +209,14 @@ class EmailService {
   async enviarCredenciales(
     correo: string,
     nombreCompleto: string,
-    passwordTemporal: string
+    passwordTemporal: string,
+    rolUsuario?: "JUEZ" | "SECRETARIO" | "ADMIN"
   ): Promise<boolean> {
+    // Determinar correo de destino (modo educativo)
+    const correoDestino = obtenerCorreoDestino(correo, rolUsuario);
+    const modoEducativo =
+      EMAIL_EDUCATIVO_HABILITADO && correoDestino !== correo;
+
     const html = `
 <!DOCTYPE html>
 <html lang="es">
@@ -133,6 +232,18 @@ class EmailService {
   </div>
   
   <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
+    ${
+      modoEducativo
+        ? `
+    <div style="background: #e7f3ff; border: 1px solid #b6d4fe; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+      <strong style="color: #084298;">🎓 Modo Educativo</strong>
+      <p style="margin: 5px 0 0 0; color: #084298; font-size: 14px;">
+        Este correo fue redirigido. Originalmente destinado a: <strong>${correo}</strong>
+      </p>
+    </div>
+    `
+        : ""
+    }
     <h2 style="color: #1e3a5f; margin-top: 0;">Bienvenido/a al Sistema</h2>
     
     <p>Estimado/a <strong>${nombreCompleto}</strong>,</p>
@@ -163,7 +274,7 @@ class EmailService {
     
     <p>Para acceder al sistema, visite:</p>
     <p style="text-align: center;">
-      <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/funcionarios/login" 
+      <a href="${process.env.FRONTEND_URL || "http://localhost:8080"}/funcionarios/login" 
          style="display: inline-block; background: #1e3a5f; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
         Iniciar Sesión
       </a>
@@ -186,6 +297,7 @@ class EmailService {
       to: correo,
       subject: "🔐 Credenciales de Acceso - Sistema Juez Seguro",
       html,
+      rolDestinatario: rolUsuario,
     });
   }
 
@@ -195,8 +307,14 @@ class EmailService {
   async enviarResetPassword(
     correo: string,
     nombreCompleto: string,
-    nuevaPassword: string
+    nuevaPassword: string,
+    rolUsuario?: "JUEZ" | "SECRETARIO" | "ADMIN"
   ): Promise<boolean> {
+    // Determinar correo de destino (modo educativo)
+    const correoDestino = obtenerCorreoDestino(correo, rolUsuario);
+    const modoEducativo =
+      EMAIL_EDUCATIVO_HABILITADO && correoDestino !== correo;
+
     const html = `
 <!DOCTYPE html>
 <html lang="es">
@@ -210,6 +328,18 @@ class EmailService {
   </div>
   
   <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
+    ${
+      modoEducativo
+        ? `
+    <div style="background: #e7f3ff; border: 1px solid #b6d4fe; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+      <strong style="color: #084298;">🎓 Modo Educativo</strong>
+      <p style="margin: 5px 0 0 0; color: #084298; font-size: 14px;">
+        Este correo fue redirigido. Originalmente destinado a: <strong>${correo}</strong>
+      </p>
+    </div>
+    `
+        : ""
+    }
     <h2 style="color: #1e3a5f; margin-top: 0;">Restablecimiento de Contraseña</h2>
     
     <p>Estimado/a <strong>${nombreCompleto}</strong>,</p>
@@ -240,6 +370,7 @@ class EmailService {
       to: correo,
       subject: "🔑 Restablecimiento de Contraseña - Sistema Juez Seguro",
       html,
+      rolDestinatario: rolUsuario,
     });
   }
 
