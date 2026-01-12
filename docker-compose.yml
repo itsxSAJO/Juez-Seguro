@@ -224,26 +224,22 @@ services:
       start_period: 40s
 
   # ----------------------------------------------------------------
-  # 6. ADMINER - Panel de Administración (Solo Desarrollo)
-  # Interfaz web para gestionar las bases de datos durante desarrollo
+  # ⚠️ ADMINER REMOVIDO PARA PRODUCCIÓN
   # ----------------------------------------------------------------
-  adminer:
-    image: adminer:4-standalone
-    container_name: juez_seguro_adminer
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    networks:
-      - backend_secure_net
-    environment:
-      ADMINER_DEFAULT_SERVER: db_usuarios
-    profiles:
-      - dev # Solo se inicia con: docker-compose --profile dev up
-    depends_on:
-      - db_usuarios
-      - db_casos
-      - db_logs
-      - db_secrets
+  # Adminer fue eliminado por seguridad (CWE-200: Exposure of Sensitive Information)
+  # Un panel de administración de BD expuesto permite:
+  # - Acceso no autorizado a datos sensibles
+  # - Modificación/eliminación de registros
+  # - Extracción masiva de información (data exfiltration)
+  #
+  # Para desarrollo local, usar herramientas como:
+  # - pgAdmin (instalación local)
+  # - DBeaver (instalación local)
+  # - psql CLI dentro del contenedor
+  #
+  # Ejemplo de acceso seguro a BD en desarrollo:
+  #   docker exec -it juez_seguro_db_users psql -U admin_users -d db_usuarios
+  # ----------------------------------------------------------------
 
 # ============================================================================
 # REDES - Aislamiento de Tráfico
@@ -251,7 +247,9 @@ services:
 networks:
   backend_secure_net:
     driver: bridge
-    # internal: true # Deshabilitado para desarrollo. Habilitar en producción
+    # PRODUCCIÓN: Descomentar 'internal: true' para aislar la red
+    # Esto previene que los contenedores accedan a internet directamente
+    # internal: true
     ipam:
       config:
         - subnet: 172.28.0.0/16
