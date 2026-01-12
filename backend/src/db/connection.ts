@@ -5,6 +5,9 @@
 
 import { Pool, PoolConfig } from "pg";
 import { config } from "../config/index.js";
+import { loggers } from "../services/logger.service.js";
+
+const log = loggers.db;
 
 // ============================================================================
 // Pool de conexión - Base de Datos de Usuarios (FIA)
@@ -73,9 +76,9 @@ export async function testConnections(): Promise<{
     await usersClient.query("SELECT 1");
     usersClient.release();
     results.users = true;
-    console.log("✓ Conexión a db_usuarios establecida");
+    log.info("Conexión a db_usuarios establecida");
   } catch (error) {
-    console.error("✗ Error conectando a db_usuarios:", error);
+    log.error("Error conectando a db_usuarios:", error);
   }
 
   try {
@@ -83,9 +86,9 @@ export async function testConnections(): Promise<{
     await casesClient.query("SELECT 1");
     casesClient.release();
     results.cases = true;
-    console.log("✓ Conexión a db_casos establecida");
+    log.info("Conexión a db_casos establecida");
   } catch (error) {
-    console.error("✗ Error conectando a db_casos:", error);
+    log.error("Error conectando a db_casos:", error);
   }
 
   try {
@@ -93,9 +96,9 @@ export async function testConnections(): Promise<{
     await logsClient.query("SELECT 1");
     logsClient.release();
     results.logs = true;
-    console.log("✓ Conexión a db_logs establecida");
+    log.info("Conexión a db_logs establecida");
   } catch (error) {
-    console.error("✗ Error conectando a db_logs:", error);
+    log.error("Error conectando a db_logs:", error);
   }
 
   return results;
@@ -110,7 +113,7 @@ export async function closeConnections(): Promise<void> {
     casesPool.end(),
     logsPool.end(),
   ]);
-  console.log("Todas las conexiones de base de datos cerradas");
+  log.info("Todas las conexiones de base de datos cerradas");
 }
 
 export default {

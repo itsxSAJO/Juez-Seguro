@@ -7,7 +7,10 @@
 import { casesPool } from "../db/connection.js";
 import { v4 as uuidv4 } from "uuid";
 import { notificacionesService } from "./notificaciones.service.js";
+import { loggers } from "./logger.service.js";
 import type { Audiencia, EstadoAudiencia, TipoAudiencia } from "../types/index.js";
+
+const log = loggers.audiencias;
 
 interface CrearAudienciaInput {
   causaId: string;
@@ -124,7 +127,7 @@ class AudienciasService {
         }
       } catch (notifError) {
         // No fallar la creación si la notificación falla
-        console.error("Error al crear notificación de audiencia programada:", notifError);
+        log.error("Error al crear notificación de audiencia programada:", notifError);
       }
 
       return audiencia;
@@ -415,7 +418,7 @@ class AudienciasService {
         }
       } catch (notifError) {
         // No fallar la reprogramación si la notificación falla
-        console.error("Error al crear notificación de reprogramación:", notifError);
+        log.error("Error al crear notificación de reprogramación:", notifError);
       }
 
       return result.rows[0] ? this.mapearAudiencia(result.rows[0]) : null;

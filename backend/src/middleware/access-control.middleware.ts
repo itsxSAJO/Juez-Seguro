@@ -9,7 +9,10 @@
 import { Request, Response, NextFunction } from "express";
 import { casesPool } from "../db/connection.js";
 import { auditService } from "../services/audit.service.js";
+import { loggers } from "../services/logger.service.js";
 import { getClientIp, getUserAgent } from "./auth.middleware.js";
+
+const log = loggers.security;
 
 /**
  * Middleware que verifica si un juez tiene acceso a una causa específica
@@ -110,8 +113,8 @@ export function verificarPropiedadCausa(paramName: string = "id") {
           });
 
           // Log adicional en consola para alertas de seguridad
-          console.warn(
-            `[SEGURIDAD] ACCESO_DENEGADO - Posible IDOR: ` +
+          log.warn(
+            `ACCESO_DENEGADO - Posible IDOR: ` +
             `Juez ${juezTokenID} (${req.user.correo}) intentó acceder a causa ${causaId} ` +
             `desde IP ${ip}`
           );
@@ -154,7 +157,7 @@ export function verificarPropiedadCausa(paramName: string = "id") {
         client.release();
       }
     } catch (error) {
-      console.error("Error en verificación de propiedad de causa:", error);
+      log.error("Error en verificación de propiedad de causa:", error);
       
       // Registrar error en auditoría
       if (req.user) {
@@ -264,7 +267,7 @@ export function verificarPropiedadDocumento(documentoParamName: string = "docume
         client.release();
       }
     } catch (error) {
-      console.error("Error en verificación de propiedad de documento:", error);
+      log.error("Error en verificación de propiedad de documento:", error);
       res.status(500).json({
         success: false,
         error: "Error al verificar permisos de acceso al documento",
@@ -369,7 +372,7 @@ export function verificarPropiedadAudiencia(audienciaParamName: string = "audien
         client.release();
       }
     } catch (error) {
-      console.error("Error en verificación de propiedad de audiencia:", error);
+      log.error("Error en verificación de propiedad de audiencia:", error);
       res.status(500).json({
         success: false,
         error: "Error al verificar permisos de acceso a la audiencia",
@@ -466,7 +469,7 @@ export function verificarSecretarioPropietarioCausa(causaParamName: string = "ca
         client.release();
       }
     } catch (error) {
-      console.error("Error en verificación de secretario propietario:", error);
+      log.error("Error en verificación de secretario propietario:", error);
       res.status(500).json({
         success: false,
         error: "Error al verificar permisos de acceso",

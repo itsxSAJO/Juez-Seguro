@@ -6,7 +6,10 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { authService } from "../services/auth.service.js";
+import { loggers } from "../services/logger.service.js";
 import { authenticate, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
+
+const log = loggers.auth;
 
 const router = Router();
 
@@ -77,7 +80,7 @@ router.post("/login", async (req: Request, res: Response) => {
       }
     }
 
-    console.error("Error en login:", error);
+    log.error("Error en login:", error);
     res.status(500).json({
       success: false,
       error: "Error interno del servidor",
@@ -100,7 +103,7 @@ router.post("/logout", authenticate, async (req: Request, res: Response) => {
       message: "Sesión cerrada correctamente",
     });
   } catch (error) {
-    console.error("Error en logout:", error);
+    log.error("Error en logout:", error);
     res.status(500).json({
       success: false,
       error: "Error interno del servidor",
@@ -125,7 +128,7 @@ router.get("/me", authenticate, async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error en /me:", error);
+    log.error("Error en /me:", error);
     res.status(500).json({
       success: false,
       error: "Error interno del servidor",
@@ -172,7 +175,7 @@ router.post("/cambiar-password", authenticate, async (req: Request, res: Respons
       message: "Contraseña cambiada correctamente",
     });
   } catch (error) {
-    console.error("Error en cambiar-password:", error);
+    log.error("Error en cambiar-password:", error);
     res.status(500).json({
       success: false,
       error: "Error interno del servidor",
@@ -214,7 +217,7 @@ router.post("/validar-token", async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error en validar-token:", error);
+    log.error("Error en validar-token:", error);
     res.status(500).json({
       success: false,
       error: "Error interno del servidor",

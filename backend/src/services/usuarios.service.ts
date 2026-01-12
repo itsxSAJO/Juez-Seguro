@@ -11,7 +11,10 @@ import { auditService } from "./audit.service.js";
 import { pseudonimosService } from "./pseudonimos.service.js";
 import { emailService } from "./email.service.js";
 import { pkiService } from "./pki.service.js";
+import { loggers } from "./logger.service.js";
 import type { Funcionario, FuncionarioPublico, UserRole, EstadoCuenta, Rol } from "../types/index.js";
+
+const log = loggers.auth;
 
 // Constante para identificar el rol de JUEZ
 const ROL_JUEZ_ID = 2; // Según el esquema: ADMIN_CJ=1, JUEZ=2, SECRETARIO=3
@@ -160,7 +163,7 @@ class FuncionariosService {
       );
 
       if (!correoEnviado) {
-        console.warn(`⚠️ No se pudo enviar el correo de credenciales a ${input.correoInstitucional}`);
+        log.warn(`⚠️ No se pudo enviar el correo de credenciales a ${input.correoInstitucional}`);
       }
 
       // EVENTO CRÍTICO: Si el rol es JUEZ, generar pseudónimo inmediatamente
@@ -188,12 +191,12 @@ class FuncionariosService {
           certificadoGenerado = resultadoPKI.exito;
           
           if (resultadoPKI.exito) {
-            console.log(`[USUARIOS] Certificado PKI generado para juez ${funcionario.funcionario_id}`);
+            log.info(`Certificado PKI generado`, { juezId: funcionario.funcionario_id });
           } else {
-            console.warn(`[USUARIOS] ⚠️ No se pudo generar certificado PKI: ${resultadoPKI.mensaje}`);
+            log.warn(`No se pudo generar certificado PKI: ${resultadoPKI.mensaje}`);
           }
         } catch (pkiError) {
-          console.error("[USUARIOS] Error al generar certificado PKI:", pkiError);
+          log.error("Error al generar certificado PKI:", pkiError);
           // No fallar el registro si falla el certificado - se puede generar después
         }
       }

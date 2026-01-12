@@ -8,8 +8,11 @@
 import { casesPool, usersPool } from "../db/connection.js";
 import crypto from "crypto";
 import { auditService } from "./audit.service.js";
+import { loggers } from "./logger.service.js";
 import { notificacionesService } from "./notificaciones.service.js";
 import type { Causa, CausaPublica, ActuacionPublica, EstadoProcesal, Expediente, MapaPseudonimo, TokenPayload } from "../types/index.js";
+
+const log = loggers.causas;
 
 // ============================================================================
 // INTERFACES
@@ -401,7 +404,7 @@ class CausasService {
         );
       } catch (notifError) {
         // No fallar la creación de causa si la notificación falla
-        console.error("Error al crear notificación de causa asignada:", notifError);
+        log.error("Error al crear notificación de causa asignada:", notifError);
       }
 
       return {

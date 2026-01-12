@@ -10,6 +10,9 @@ import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { auditService } from "./audit.service.js";
+import { loggers } from "./logger.service.js";
+
+const log = loggers.pki;
 
 // ============================================================================
 // CONFIGURACIÓN
@@ -61,14 +64,14 @@ class PkiService {
       // Verificar que existe la CA
       const caExists = await this.verificarCA();
       if (!caExists) {
-        console.warn("[PKI] ⚠️ No se encontró la CA. Generando CA de desarrollo...");
+        log.warn("No se encontró la CA. Generando CA de desarrollo...");
         await this.generarCADesarrollo();
       }
 
       this.inicializado = true;
-      console.log("[PKI] Servicio de certificados inicializado");
+      log.info("Servicio de certificados inicializado");
     } catch (error) {
-      console.error("[PKI] Error al inicializar:", error);
+      log.error("Error al inicializar:", error);
       throw error;
     }
   }
@@ -107,7 +110,7 @@ class PkiService {
       "-subj", "/C=EC/ST=Pichincha/L=Quito/O=Consejo de la Judicatura/OU=PKI/CN=CA Judicatura Ecuador Dev"
     ]);
 
-    console.log("[PKI] CA de desarrollo generada");
+    log.info("CA de desarrollo generada");
   }
 
   /**
@@ -125,7 +128,7 @@ class PkiService {
       // Verificar si ya existe
       try {
         await fs.access(crtPath);
-        console.log(`[PKI] Certificado para juez ${datos.juezId} ya existe`);
+        log.info(`Certificado para juez ya existe`, { juezId: datos.juezId });
         return {
           exito: true,
           mensaje: "Certificado ya existe",
@@ -171,7 +174,7 @@ class PkiService {
       // 5. Obtener información del certificado generado
       const certInfo = await this.obtenerInfoCertificado(crtPath);
 
-      console.log(`[PKI] Certificado generado para juez ${datos.juezId}: ${nombreLimpio}`);
+      log.info(`Certificado generado para juez`, { juezId: datos.juezId, nombre: nombreLimpio });
 
       return {
         exito: true,
@@ -183,7 +186,7 @@ class PkiService {
       };
 
     } catch (error) {
-      console.error(`[PKI] Error al generar certificado para juez ${datos.juezId}:`, error);
+      log.error(`Error al generar certificado para juez ${datos.juezId}:`, error);
       
       // Limpiar archivos parciales
       await fs.unlink(keyPath).catch(() => {});
@@ -210,10 +213,10 @@ class PkiService {
       await fs.rename(crtPath, revokedPath);
       await fs.unlink(keyPath).catch(() => {}); // Eliminar clave privada
 
-      console.log(`[PKI] Certificado de juez ${juezId} revocado`);
+      log.info(`Certificado de juez revocado`, { juezId });
       return true;
     } catch (error) {
-      console.error(`[PKI] Error al revocar certificado de juez ${juezId}:`, error);
+      log.error(`Error al revocar certificado de juez ${juezId}:`, error);
       return false;
     }
   }

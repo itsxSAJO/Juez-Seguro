@@ -10,6 +10,9 @@
 
 import crypto from "crypto";
 import { Pool, PoolConfig } from "pg";
+import { loggers } from "./logger.service.js";
+
+const log = loggers.secrets;
 
 // ============================================================================
 // CONSTANTES DE SEGURIDAD
@@ -87,7 +90,7 @@ class SecretsManager {
     }
   ): Promise<void> {
     if (this.initialized) {
-      console.log("[SecretsManager] Ya está inicializado");
+      log.debug("Ya está inicializado");
       return;
     }
 
@@ -108,7 +111,7 @@ class SecretsManager {
     }
 
     // Derivar clave AES-256 desde la master key usando PBKDF2
-    console.log("[SecretsManager] Derivando clave AES-256 con PBKDF2...");
+    log.info("Derivando clave AES-256 con PBKDF2...");
     this.derivedKey = crypto.pbkdf2Sync(
       masterKeyPassword,
       PBKDF2_SALT,
@@ -136,7 +139,7 @@ class SecretsManager {
       const client = await this.pool.connect();
       await client.query("SELECT 1");
       client.release();
-      console.log("[SecretsManager] ✓ Conexión a db_secrets establecida");
+      log.info("✓ Conexión a db_secrets establecida");
     } catch (error) {
       throw new Error(`[SecretsManager] Error conectando a db_secrets: ${error}`);
     }
@@ -148,7 +151,7 @@ class SecretsManager {
     // Cargar todos los secretos activos en caché
     await this.loadAllSecrets();
 
-    console.log("[SecretsManager] ✓ Inicializado correctamente");
+    log.info("✓ Inicializado correctamente");
   }
 
   /**
@@ -257,9 +260,9 @@ class SecretsManager {
         };
 
         this.secretsCache.set(row.nombre, secreto);
-        console.log(`[SecretsManager] ✓ Secreto cargado: ${row.nombre} (v${row.version})`);
+        log.debug(`✓ Secreto cargado: ${row.nombre}`, { version: row.version });
       } catch (error) {
-        console.error(`[SecretsManager] ✗ Error desencriptando secreto ${row.nombre}:`, error);
+        log.error(`✗ Error desencriptando secreto ${row.nombre}`, { error: String(error) });
         throw new Error(
           `Error al desencriptar secreto "${row.nombre}". ` +
           `Verifica que MASTER_KEY_PASSWORD sea correcta.`
@@ -267,7 +270,7 @@ class SecretsManager {
       }
     }
 
-    console.log(`[SecretsManager] ${this.secretsCache.size} secretos cargados en caché`);
+    log.info(`${this.secretsCache.size} secretos cargados en caché`);
   }
 
   /**
@@ -368,7 +371,7 @@ class SecretsManager {
     // Agregar al caché
     this.secretsCache.set(nombre, secreto);
 
-    console.log(`[SecretsManager] ✓ Secreto creado: ${nombre}`);
+    log.info(`✓ Secreto creado: ${nombre}`);
     
     const { valor: _, ...info } = secreto;
     return info;
@@ -434,7 +437,7 @@ class SecretsManager {
         secretoCached.fechaRotacion = new Date();
       }
 
-      console.log(`[SecretsManager] ✓ Secreto rotado: ${nombre} (v${versionAnterior} → v${nuevaVersion})`);
+      log.info(`✓ Secreto rotado: ${nombre}`, { versionAnterior, nuevaVersion });
 
       return this.getSecretInfo(nombre)!;
     } catch (error) {
@@ -450,7 +453,7 @@ class SecretsManager {
    */
   public async reloadSecrets(): Promise<void> {
     this.ensureInitialized();
-    console.log("[SecretsManager] Recargando secretos...");
+    log.info("Recargando secretos...");
     await this.loadAllSecrets();
   }
 
@@ -480,7 +483,7 @@ class SecretsManager {
     this.secretsCache.clear();
     this.derivedKey = null;
     this.initialized = false;
-    console.log("[SecretsManager] Conexión cerrada");
+    log.info("Conexión cerrada");
   }
 
   /**

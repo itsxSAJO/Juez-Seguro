@@ -12,6 +12,9 @@ import type {
 } from "../types/index.js";
 import { auditService } from "./audit.service.js";
 import { plazosService } from "./plazos.service.js";
+import { loggers } from "./logger.service.js";
+
+const log = loggers.system;
 
 class NotificacionesProcesalesService {
   // ============================================================================
@@ -158,11 +161,11 @@ class NotificacionesProcesalesService {
 
     const plazoConfig = mapeoNotificacionPlazo[input.tipoNotificacion];
     
-    console.log(`[PLAZO AUTO] Tipo notificación: ${input.tipoNotificacion}, Config: ${JSON.stringify(plazoConfig)}`);
+    log.debug(`Creando plazo automático`, { tipoNotificacion: input.tipoNotificacion, config: plazoConfig });
     
     if (plazoConfig) {
       try {
-        console.log(`[PLAZO AUTO] Creando plazo para causa ${input.causaId}, notificación ${notificacion.notificacionId}`);
+        log.debug(`Creando plazo para notificación`, { causaId: input.causaId, notificacionId: notificacion.notificacionId });
         await plazosService.crearPlazo(
           {
             causaId: input.causaId,
@@ -176,13 +179,13 @@ class NotificacionesProcesalesService {
           usuario,
           ipOrigen
         );
-        console.log(`[PLAZO AUTO] Plazo creado exitosamente`);
+        log.debug(`Plazo creado exitosamente`);
       } catch (error) {
         // Log pero no fallar la notificación si el plazo no se puede crear
-        console.error(`[PLAZO AUTO] Error creando plazo para notificación ${notificacion.notificacionId}:`, error);
+        log.error(`Error creando plazo para notificación ${notificacion.notificacionId}:`, error);
       }
     } else {
-      console.log(`[PLAZO AUTO] Sin plazo para tipo: ${input.tipoNotificacion}`);
+      log.debug(`Sin plazo para tipo: ${input.tipoNotificacion}`);
     }
 
     return notificacion;

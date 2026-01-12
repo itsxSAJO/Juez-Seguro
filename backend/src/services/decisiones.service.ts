@@ -13,7 +13,10 @@ import { casesPool } from "../db/connection.js";
 import { auditService } from "./audit.service.js";
 import { firmaService } from "./firma.service.js";
 import { pseudonimosService } from "./pseudonimos.service.js";
+import { loggers } from "./logger.service.js";
 import crypto from "crypto";
+
+const log = loggers.documentos;
 import fs from "fs/promises";
 import path from "path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -67,7 +70,7 @@ class DecisionesService {
     try {
       await fs.mkdir(DECISIONES_STORAGE_PATH, { recursive: true });
     } catch (error) {
-      console.error("[DECISIONES] Error al crear directorio de almacenamiento:", error);
+      log.error("Error al crear directorio de almacenamiento:", error);
     }
   }
 
@@ -293,7 +296,7 @@ class DecisionesService {
         userAgent,
       });
 
-      console.log(`[DECISIONES] Decisión ${decision.decisionId} creada por juez ${usuario.funcionarioId}`);
+      loggers.system.info(`Decisión creada`, { decisionId: decision.decisionId, juezId: usuario.funcionarioId });
       return decision;
 
     } finally {
@@ -739,7 +742,7 @@ class DecisionesService {
           [decision.causaId]
         );
 
-        console.log(`[DECISIONES] Causa ${decision.causaId} actualizada a estado RESUELTA`);
+        loggers.system.info(`Causa actualizada a estado RESUELTA`, { causaId: decision.causaId });
       }
 
       // 9.2. CREAR EVENTO EN LÍNEA DE TIEMPO (si existe tabla de eventos)
@@ -769,8 +772,11 @@ class DecisionesService {
       // CONFIRMAR TRANSACCIÓN
       await client.query('COMMIT');
       
-      console.log(`[DECISIONES] ✅ Decisión ${decisionId} FIRMADA por ${metadatosFirma.certificadoFirmante}`);
-      console.log(`[DECISIONES] ✅ Documento ${documentoId} insertado en expediente electrónico`);
+      loggers.system.info(`Decisión FIRMADA`, { 
+        decisionId, 
+        firmante: metadatosFirma.certificadoFirmante,
+        documentoId 
+      });
 
       // Actualizar objeto con documento_id
       decisionFirmada.documentoId = documentoId;
@@ -803,7 +809,7 @@ class DecisionesService {
         });
       } catch (auditError) {
         // Auditoría no debe fallar la transacción principal
-        console.error(`[DECISIONES] ⚠️ Error en auditoría (no afecta firma):`, auditError);
+        log.error(`⚠️ Error en auditoría (no afecta firma):`, auditError);
       }
 
       return decisionFirmada;
@@ -815,7 +821,7 @@ class DecisionesService {
       } catch (rollbackError) {
         // Ignorar error de rollback si ya se hizo commit
       }
-      console.error(`[DECISIONES] ❌ Error en firma, transacción revertida:`, error);
+      log.error(`❌ Error en firma, transacción revertida:`, error);
       throw error;
     } finally {
       client.release();

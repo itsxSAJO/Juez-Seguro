@@ -13,6 +13,9 @@ import { auditService } from "./audit.service.js";
 import type { MetadatosFirma, VerificacionFirma } from "../types/index.js";
 import { configBase } from "../config/index.js";
 import { secretsManager } from "./secrets-manager.service.js";
+import { loggers } from "./logger.service.js";
+
+const log = loggers.pki;
 
 // ============================================================================
 // CONFIGURACIÓN PKI (Lazy Loading - CWE-798 Mitigado)
@@ -97,7 +100,7 @@ class FirmaElectronicaService {
         await fs.access(keyPath);
         await fs.access(crtPath);
       } catch {
-        console.warn(`[FIRMA] No se encontraron certificados para juez ${juezId}`);
+        log.warn(`No se encontraron certificados para juez ${juezId}`);
         return null;
       }
 
@@ -127,11 +130,11 @@ class FirmaElectronicaService {
       // Guardar en cache
       this.certificadosCache.set(juezId, certificado);
 
-      console.log(`[FIRMA] Certificado cargado para juez ${juezId}: ${certInfo.commonName}`);
+      log.info(`Certificado cargado para juez`, { juezId, commonName: certInfo.commonName });
       return certificado;
 
     } catch (error) {
-      console.error(`[FIRMA] Error al cargar certificado para juez ${juezId}:`, error);
+      log.error(`Error al cargar certificado para juez ${juezId}:`, error);
       return null;
     }
   }
@@ -267,11 +270,11 @@ class FirmaElectronicaService {
         userAgent,
       });
 
-      console.log(`[FIRMA] Documento firmado por ${certificado.commonName} (Juez ID: ${juezId})`);
+      log.info(`Documento firmado`, { firmante: certificado.commonName, juezId });
       return metadatos;
 
     } catch (error) {
-      console.error(`[FIRMA] Error al firmar documento:`, error);
+      log.error(`Error al firmar documento:`, error);
       
       await auditService.log({
         tipoEvento: "FIRMA_FALLIDA",
@@ -350,7 +353,7 @@ class FirmaElectronicaService {
       }
 
     } catch (error) {
-      console.error(`[FIRMA] Error al verificar firma:`, error);
+      log.error(`Error al verificar firma:`, error);
       return {
         valido: false,
         error: `Error de verificación: ${(error as Error).message}`,
@@ -418,7 +421,7 @@ class FirmaElectronicaService {
    */
   limpiarCache(): void {
     this.certificadosCache.clear();
-    console.log("[FIRMA] Cache de certificados limpiado");
+    log.info("Cache de certificados limpiado");
   }
 }
 

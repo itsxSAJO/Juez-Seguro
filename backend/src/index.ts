@@ -12,6 +12,9 @@ import { testConnections, closeConnections } from "./db/connection.js";
 import { auditService } from "./services/audit.service.js";
 import { secretsManager } from "./services/secrets-manager.service.js";
 import { reiniciarTransporter } from "./services/email.service.js";
+import { loggers } from "./services/logger.service.js";
+
+const log = loggers.system;
 
 // Importar rutas
 import authRoutes from "./routes/auth.routes.js";
@@ -109,9 +112,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   
   res.on("finish", () => {
     const duration = Date.now() - start;
-    console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`
-    );
+    log.debug(`${req.method} ${req.path}`, { status: res.statusCode, durationMs: duration });
   });
   
   next();
@@ -177,7 +178,7 @@ app.use((req: Request, res: Response) => {
 
 // Error handler global
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(`[ERROR] ${new Date().toISOString()}:`, err);
+  log.error(`Error en ${req.method} ${req.path}:`, err);
 
   // Registrar error en auditoría
   const funcionarioId = (req as any).user?.funcionarioId;
@@ -192,7 +193,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
       },
       ipOrigen: req.ip || req.socket.remoteAddress || "unknown",
       userAgent: req.get("user-agent") || "unknown",
-    }).catch(console.error);
+    }).catch((e) => log.error("Error registrando auditoría:", e));
   }
 
   // No exponer detalles de errores en producción
@@ -213,13 +214,13 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 const startServer = async () => {
   try {
-    console.log("🚀 Iniciando Juez Seguro Backend...");
-    console.log(`📍 Ambiente: ${configBase.nodeEnv}`);
+    log.info("🚀 Iniciando Juez Seguro Backend...");
+    log.info(`📍 Ambiente: ${configBase.nodeEnv}`);
 
     // ========================================================================
     // PASO 1: Inicializar SecretsManager (carga secretos desde db_secrets)
     // ========================================================================
-    console.log("🔐 Inicializando gestor de secretos...");
+    log.info("🔐 Inicializando gestor de secretos...");
     try {
       await secretsManager.initialize(
         configBase.masterKeyPassword,
@@ -238,22 +239,22 @@ const startServer = async () => {
       // Reiniciar transporter de email para usar las credenciales de db_secrets
       reiniciarTransporter();
       
-      console.log("✅ Secretos cargados desde db_secrets");
+      log.info("✅ Secretos cargados desde db_secrets");
     } catch (secretsError) {
-      console.error("❌ Error al cargar secretos:", secretsError);
+      log.error("❌ Error al cargar secretos:", secretsError);
       throw secretsError;
     }
 
     // ========================================================================
     // PASO 2: Probar conexiones a bases de datos principales
     // ========================================================================
-    console.log("🔌 Conectando a bases de datos...");
+    log.info("🔌 Conectando a bases de datos...");
     const dbStatus = await testConnections();
-    console.log("✅ Conexiones establecidas:", dbStatus);
+    log.info("✅ Conexiones establecidas", dbStatus);
 
     // Iniciar servidor HTTP
     const server = app.listen(configBase.port, () => {
-      console.log(`
+      log.info(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                    JUEZ SEGURO BACKEND                     ║
 ║              Sistema Judicial Seguro v1.0.0               ║
@@ -279,7 +280,7 @@ const startServer = async () => {
 
       // Iniciar monitoreo de plazos (cada 60 minutos)
       alertasService.iniciarMonitoreo(60);
-      console.log("⏰ Monitoreo de plazos iniciado");
+      log.info("⏰ Monitoreo de plazos iniciado");
 
       // Registrar inicio del sistema en auditoría
       auditService.log({
@@ -293,22 +294,20 @@ const startServer = async () => {
         },
         ipOrigen: "localhost",
         userAgent: "system",
-      }).catch(console.error);
+      }).catch(err => log.error("Error registrando inicio:", err));
 
       // Suscribir listener global para eventos de alta criticidad (Sprint 3)
       auditInterceptor.subscribe("*", async (evento: { criticidad: string; tipo: string; modulo: string; usuarioCorreo: string }) => {
         if (evento.criticidad === "ALTA") {
-          console.log(
-            `🔒 [AUDIT] ${evento.tipo} | ${evento.modulo} | Usuario: ${evento.usuarioCorreo} | ${new Date().toISOString()}`
-          );
+          log.warn(`[AUDIT] ${evento.tipo} | ${evento.modulo} | Usuario: ${evento.usuarioCorreo}`);
         }
       });
-      console.log("🔍 Interceptor de auditoría transversal iniciado");
+      log.info("🔍 Interceptor de auditoría transversal iniciado");
     });
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {
-      console.log(`\n📴 Recibida señal ${signal}. Cerrando servidor...`);
+      log.info(`📴 Recibida señal ${signal}. Cerrando servidor...`);
 
       // Registrar apagado en auditoría
       await auditService.log({
@@ -317,19 +316,19 @@ const startServer = async () => {
         datosAfectados: { signal },
         ipOrigen: "localhost",
         userAgent: "system",
-      }).catch(console.error);
+      }).catch(err => log.error("Error registrando apagado:", err));
 
       server.close(async () => {
-        console.log("🔌 Cerrando conexiones de base de datos...");
+        log.info("🔌 Cerrando conexiones de base de datos...");
         await closeConnections();
         await secretsManager.close();
-        console.log("👋 Servidor cerrado correctamente.");
+        log.info("👋 Servidor cerrado correctamente.");
         process.exit(0);
       });
 
       // Forzar cierre después de 10 segundos
       setTimeout(() => {
-        console.error("⚠️ Forzando cierre...");
+        log.error("⚠️ Forzando cierre...");
         process.exit(1);
       }, 10000);
     };
@@ -338,7 +337,7 @@ const startServer = async () => {
     process.on("SIGINT", () => shutdown("SIGINT"));
 
   } catch (error) {
-    console.error("❌ Error fatal al iniciar servidor:", error);
+    log.error("❌ Error fatal al iniciar servidor:", error);
     process.exit(1);
   }
 };

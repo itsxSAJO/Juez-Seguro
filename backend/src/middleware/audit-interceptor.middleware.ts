@@ -5,8 +5,11 @@
 // ============================================================================
 
 import { auditService } from "../services/audit.service.js";
+import { loggers } from "../services/logger.service.js";
 import type { TipoEventoAuditoria, ModuloAfectado } from "../types/index.js";
 import type { Request, Response, NextFunction } from "express";
+
+const log = loggers.system;
 
 // ============================================================================
 // TIPOS DE EVENTOS CRÍTICOS
@@ -125,7 +128,7 @@ class AuditInterceptor {
           try {
             await callback(evento);
           } catch (error) {
-            console.error(`[AuditInterceptor] Error en callback para ${evento.tipo}:`, error);
+            log.error(`Error en callback para ${evento.tipo}:`, error);
           }
         }
 
@@ -135,18 +138,16 @@ class AuditInterceptor {
           try {
             await callback(evento);
           } catch (error) {
-            console.error("[AuditInterceptor] Error en callback global:", error);
+            log.error("Error en callback global:", error);
           }
         }
 
-        // 4. Log en consola para eventos de alta criticidad
+        // 4. Log para eventos de alta criticidad
         if (evento.criticidad === "ALTA") {
-          console.log(
-            `[EVENTO CRÍTICO] ${evento.tipo} - Usuario: ${evento.usuarioCorreo} - ${evento.descripcion}`
-          );
+          log.warn(`[EVENTO CRÍTICO] ${evento.tipo} - Usuario: ${evento.usuarioCorreo} - ${evento.descripcion}`);
         }
       } catch (error) {
-        console.error("[AuditInterceptor] Error procesando evento:", error, evento);
+        log.error("Error procesando evento:", error);
       }
     }
 

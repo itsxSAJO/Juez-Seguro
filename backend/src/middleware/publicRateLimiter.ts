@@ -4,6 +4,7 @@
 // ============================================================================
 
 import rateLimit from "express-rate-limit";
+import { loggers } from "../services/logger.service";
 import { Request, Response, NextFunction } from "express";
 
 // ============================================================================
@@ -27,7 +28,7 @@ export const publicSearchLimiter = rateLimit({
     return req.ip || req.socket.remoteAddress || "unknown";
   },
   handler: (req: Request, res: Response) => {
-    console.warn(`[RATE_LIMIT] IP ${req.ip} excedió límite en /api/publico`);
+    loggers.rateLimit.warn(`IP ${req.ip} excedió límite en /api/publico`);
     res.status(429).json({
       success: false,
       error: "Demasiadas consultas. Por favor espere un momento antes de continuar.",
@@ -81,7 +82,7 @@ export const recordFailedSearch = (ip: string): void => {
   // Si excede el máximo, bloquear
   if (record.count >= MAX_FAILED_BEFORE_BLOCK) {
     record.blockedUntil = now + BLOCK_DURATION;
-    console.warn(`[SECURITY] IP ${ip} bloqueada por ${BLOCK_DURATION/1000}s - demasiadas búsquedas fallidas`);
+    loggers.security.warn(`IP ${ip} bloqueada por ${BLOCK_DURATION/1000}s - demasiadas búsquedas fallidas`);
   }
   
   failedSearches.set(ip, record);

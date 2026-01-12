@@ -10,7 +10,10 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { auditService } from "./audit.service.js";
+import { loggers } from "./logger.service.js";
 import type { Documento, TipoDocumento } from "../types/index.js";
+
+const log = loggers.documentos;
 
 // ============================================================================
 // CONSTANTES DE SEGURIDAD
@@ -199,7 +202,7 @@ class DocumentosService {
     try {
       await fs.mkdir(SECURE_DOCS_DIR, { recursive: true });
     } catch (error) {
-      console.error("Error al crear directorio de almacenamiento:", error);
+      log.error("Error al crear directorio de almacenamiento:", error);
       throw new Error("No se pudo inicializar el almacenamiento de documentos");
     }
   }
@@ -320,7 +323,7 @@ class DocumentosService {
       try {
         await fs.unlink(rutaAbsoluta);
       } catch (unlinkError) {
-        console.error("Error al eliminar archivo tras fallo en BD:", unlinkError);
+        log.error("Error al eliminar archivo tras fallo en BD:", unlinkError);
       }
 
       throw error;
@@ -497,7 +500,7 @@ class DocumentosService {
         mimeType: documento.mimeType || "application/pdf",
       };
     } catch (error) {
-      console.error(`Error al leer archivo ${rutaAbsoluta}:`, error);
+      log.error(`Error al leer archivo ${rutaAbsoluta}:`, error);
       return null;
     }
   }

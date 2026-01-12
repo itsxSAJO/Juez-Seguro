@@ -8,7 +8,10 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { z } from "zod";
 import { causasService } from "../services/causas.service.js";
 import { auditService } from "../services/audit.service.js";
+import { loggers } from "../services/logger.service.js";
 import { documentosService } from "../services/documentos.service.js";
+
+const log = loggers.security;
 import {
   publicSearchLimiter,
   progressiveDelayMiddleware,
@@ -50,7 +53,7 @@ const logPublicAccess = async (
       userAgent: req.headers["user-agent"] || "unknown",
     });
   } catch (error) {
-    console.error("Error registrando acceso público:", error);
+    log.error("Error registrando acceso público:", error);
   }
 };
 

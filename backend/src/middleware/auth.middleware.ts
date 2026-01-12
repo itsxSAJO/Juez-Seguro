@@ -6,7 +6,10 @@
 import { Request, Response, NextFunction } from "express";
 import { authService } from "../services/auth.service.js";
 import { auditService } from "../services/audit.service.js";
+import { loggers } from "../services/logger.service.js";
 import type { TokenPayload, UserRole } from "../types/index.js";
+
+const log = loggers.auth;
 
 // Extender Request para incluir usuario autenticado
 declare global {
@@ -54,7 +57,7 @@ export async function authenticate(
 
     next();
   } catch (error) {
-    console.error("Error en autenticación:", error);
+    log.error("Error en autenticación:", error);
     res.status(500).json({
       success: false,
       error: "Error interno de autenticación",
@@ -100,7 +103,7 @@ export function authorize(...allowedRoles: UserRole[]) {
 
       next();
     } catch (error) {
-      console.error("Error en autorización:", error);
+      log.error("Error en autorización:", error);
       res.status(500).json({
         success: false,
         error: "Error interno de autorización",

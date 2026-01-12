@@ -6,6 +6,9 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import { secretsManager } from "./secrets-manager.service";
+import { loggers } from "./logger.service.js";
+
+const log = loggers.email;
 
 // ============================================================================
 // CONFIGURACIÓN PARA ENTORNO EDUCATIVO
@@ -64,7 +67,7 @@ const createTransporter = (): Transporter => {
   const smtpPass = secretsManager.getSecret("SMTP_PASSWORD");
 
   if (smtpUser && smtpPass) {
-    console.log("📧 SMTP configurado con credenciales desde db_secrets");
+    log.info("SMTP configurado con credenciales desde db_secrets");
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST || "smtp.gmail.com",
       port: parseInt(process.env.SMTP_PORT || "587"),
@@ -78,7 +81,7 @@ const createTransporter = (): Transporter => {
 
   // Fallback: usar variables de entorno (desarrollo)
   if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    console.log("📧 SMTP configurado con variables de entorno");
+    log.info("SMTP configurado con variables de entorno");
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST || "smtp.gmail.com",
       port: parseInt(process.env.SMTP_PORT || "587"),
@@ -91,7 +94,7 @@ const createTransporter = (): Transporter => {
   }
 
   // Sin credenciales, crear un transporter de prueba que solo loguea
-  console.log("📧 SMTP no configurado - modo simulación (solo logs)");
+  log.warn("SMTP no configurado - modo simulación (solo logs)");
   return nodemailer.createTransport({
     streamTransport: true,
     newline: "unix",
@@ -112,7 +115,7 @@ const getTransporter = (): Transporter => {
  */
 export const reiniciarTransporter = (): void => {
   transporter = null;
-  console.log("📧 Transporter SMTP reiniciado");
+  log.info("Transporter SMTP reiniciado");
 };
 
 interface EmailOptions {
@@ -172,33 +175,27 @@ class EmailService {
 
       if (!tieneSmtp) {
         // Sin SMTP configurado, mostrar en consola
-        console.log("\n" + "=".repeat(60));
-        console.log("📧 CORREO (modo desarrollo - no enviado realmente)");
-        console.log("=".repeat(60));
-        console.log(`Para: ${options.to}`);
-        if (EMAIL_EDUCATIVO_HABILITADO && correoDestino !== options.to) {
-          console.log(`(Redirigido a: ${correoDestino})`);
-        }
-        console.log(`Asunto: ${options.subject}`);
-        console.log("-".repeat(60));
-        console.log(options.text || this.htmlToText(options.html));
-        console.log("=".repeat(60) + "\n");
+        log.debug("CORREO (modo desarrollo - no enviado realmente)", {
+          to: options.to,
+          redirigido: EMAIL_EDUCATIVO_HABILITADO && correoDestino !== options.to ? correoDestino : undefined,
+          subject: options.subject,
+          body: options.text || this.htmlToText(options.html)
+        });
         return true;
       }
 
       // Enviar correo real
       const info = await transport.sendMail(mailOptions);
 
-      console.log(`✅ Correo enviado exitosamente`);
-      console.log(`   📬 Destinatario original: ${options.to}`);
-      if (EMAIL_EDUCATIVO_HABILITADO && correoDestino !== options.to) {
-        console.log(`   🔄 Redirigido a (modo educativo): ${correoDestino}`);
-      }
-      console.log(`   📨 Message ID: ${info.messageId}`);
+      log.info("Correo enviado exitosamente", {
+        destinatarioOriginal: options.to,
+        redirigido: EMAIL_EDUCATIVO_HABILITADO && correoDestino !== options.to ? correoDestino : undefined,
+        messageId: info.messageId
+      });
 
       return true;
     } catch (error) {
-      console.error("❌ Error al enviar correo:", error);
+      log.error("Error al enviar correo:", error);
       return false;
     }
   }

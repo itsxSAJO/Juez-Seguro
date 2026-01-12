@@ -20,7 +20,9 @@ import { decisionesService } from "../services/decisiones.service.js";
 import { firmaService } from "../services/firma.service.js";
 import { auditService } from "../services/audit.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
+import { loggers } from "../services/logger.service.js";
 
+const log = loggers.system;
 const router = Router();
 
 // ============================================================================
@@ -305,7 +307,7 @@ router.post(
       const userAgent = getUserAgent(req);
 
       // Advertencia crítica en log
-      console.log(`[DECISIONES] ⚠️ FIRMA SOLICITADA: Decisión ${decisionId} por Juez ${usuario.funcionarioId}`);
+      log.warn(`FIRMA SOLICITADA: Decisión ${decisionId} por Juez ${usuario.funcionarioId}`);
 
       const decision = await decisionesService.firmarDecision(
         decisionId,

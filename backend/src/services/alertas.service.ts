@@ -7,6 +7,9 @@ import { casesPool } from "../db/connection.js";
 import type { AlertaPlazo, TokenPayload } from "../types/index.js";
 import { auditService } from "./audit.service.js";
 import { plazosService } from "./plazos.service.js";
+import { loggers } from "./logger.service.js";
+
+const log = loggers.system;
 
 // Tipo para notificación interna del sistema
 interface NotificacionInterna {
@@ -33,13 +36,11 @@ class AlertasService {
    */
   iniciarMonitoreo(intervaloMinutos: number = 60): void {
     if (this.intervaloMonitoreo) {
-      console.log("[AlertasService] Monitoreo ya está activo");
+      log.info("Monitoreo ya está activo");
       return;
     }
 
-    console.log(
-      `[AlertasService] Iniciando monitoreo de plazos cada ${intervaloMinutos} minutos`
-    );
+    log.info(`Iniciando monitoreo de plazos cada ${intervaloMinutos} minutos`);
 
     // Ejecutar inmediatamente la primera vez
     this.ejecutarEscaneo();
@@ -58,7 +59,7 @@ class AlertasService {
     if (this.intervaloMonitoreo) {
       clearInterval(this.intervaloMonitoreo);
       this.intervaloMonitoreo = null;
-      console.log("[AlertasService] Monitoreo detenido");
+      log.info("Monitoreo detenido");
     }
   }
 
@@ -72,7 +73,7 @@ class AlertasService {
     errores: number;
   }> {
     if (this.ejecutando) {
-      console.log("[AlertasService] Escaneo ya en progreso, omitiendo...");
+      log.debug("Escaneo ya en progreso, omitiendo...");
       return { escaneados: 0, alertasEnviadas: 0, errores: 0 };
     }
 
@@ -83,7 +84,7 @@ class AlertasService {
     let errores = 0;
 
     try {
-      console.log(`[AlertasService] Iniciando escaneo de plazos: ${inicio.toISOString()}`);
+      log.debug(`Iniciando escaneo de plazos: ${inicio.toISOString()}`);
 
       // Obtener plazos que necesitan alertas
       const plazosPendientes = await plazosService.obtenerPlazosPendientesAlerta();
@@ -95,8 +96,8 @@ class AlertasService {
           alertasEnviadas++;
         } catch (error) {
           errores++;
-          console.error(
-            `[AlertasService] Error procesando plazo ${plazo.plazoId}:`,
+          log.error(
+            `Error procesando plazo ${plazo.plazoId}:`,
             error
           );
         }
@@ -119,11 +120,9 @@ class AlertasService {
         userAgent: "sistema-monitoreo",
       });
 
-      console.log(
-        `[AlertasService] Escaneo completado: ${escaneados} plazos, ${alertasEnviadas} alertas, ${errores} errores`
-      );
+      log.info("Escaneo completado", { escaneados, alertasEnviadas, errores });
     } catch (error) {
-      console.error("[AlertasService] Error en escaneo:", error);
+      log.error("Error en escaneo:", error);
     } finally {
       this.ejecutando = false;
     }
@@ -296,12 +295,10 @@ class AlertasService {
         ]);
       } else {
         // Si no existe la tabla, registrar en log
-        console.log(
-          `[AlertasService] Notificación pendiente para usuario ${notif.usuarioId}: ${notif.titulo}`
-        );
+        log.debug(`Notificación pendiente para usuario ${notif.usuarioId}: ${notif.titulo}`);
       }
     } catch (error) {
-      console.error("[AlertasService] Error creando notificación interna:", error);
+      log.error("Error creando notificación interna:", error);
       // No lanzar error para no interrumpir el proceso de alertas
     }
   }

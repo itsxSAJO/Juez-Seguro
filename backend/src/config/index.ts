@@ -192,7 +192,7 @@ let secretsConfig: SecretsConfig | null = null;
  */
 export function setSecretsConfig(secrets: SecretsConfig): void {
   secretsConfig = secrets;
-  console.log("[Config] Secretos cargados desde db_secrets");
+  // Nota: No usar logger aquí para evitar dependencia circular
 }
 
 /**
