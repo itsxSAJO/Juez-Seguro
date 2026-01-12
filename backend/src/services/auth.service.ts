@@ -24,7 +24,7 @@ class AuthService {
     password: string,
     ip: string,
     userAgent: string
-  ): Promise<{ user: FuncionarioPublico; token: string; expiresAt: string } | null> {
+  ): Promise<{ user: FuncionarioPublico; token: string; expiresAt: string; requiereCambioPassword?: boolean } | null> {
     const client = await usersPool.connect();
 
     try {
@@ -84,8 +84,9 @@ class AuthService {
         }
       }
 
-      // Verificar si la cuenta está activa
-      if (funcionario.estado !== "ACTIVA") {
+      // Verificar si la cuenta está activa o HABILITABLE (primer login)
+      const esHabilitable = funcionario.estado === "HABILITABLE";
+      if (funcionario.estado !== "ACTIVA" && !esHabilitable) {
         await auditService.logLogin(correo, ip, userAgent, false, funcionario.funcionario_id);
         throw new Error("CUENTA_NO_ACTIVA");
       }
@@ -142,14 +143,15 @@ class AuthService {
         rolId: funcionario.rol_id,
         unidadJudicial: funcionario.unidad_judicial,
         materia: funcionario.materia,
+        requiereCambioPassword: esHabilitable, // Flag para primer login
       };
 
       const signOptions: SignOptions = {
-        expiresIn: 1800, // 30 minutos
+        expiresIn: esHabilitable ? 300 : 1800, // 5 min para cambio de password, 30 min normal
       };
 
       const token = jwt.sign(payload, config.jwt.secret as Secret, signOptions);
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + (esHabilitable ? 5 : 30) * 60 * 1000).toISOString();
 
       await auditService.logLogin(correo, ip, userAgent, true, funcionario.funcionario_id);
 
@@ -157,6 +159,7 @@ class AuthService {
         user: this.toPublicFuncionario(funcionario),
         token,
         expiresAt,
+        requiereCambioPassword: esHabilitable,
       };
     } finally {
       client.release();
@@ -174,7 +177,7 @@ class AuthService {
     modificadorId: number | null
   ): Promise<void> {
     await client.query(
-      `INSERT INTO historial_estados (funcionario_id, estado_anterior, estado_nuevo, usuario_modificador_id)
+      `INSERT INTO historial_estados (funcionario_id, estado_anterior, estado_nuevo, modificado_por_id)
        VALUES ($1, $2, $3, $4)`,
       [funcionarioId, estadoAnterior, estadoNuevo, modificadorId]
     );
@@ -189,12 +192,13 @@ class AuthService {
 
   /**
    * Valida un token JWT
+   * Permite tokens de usuarios ACTIVA o HABILITABLE (para cambio de contraseña)
    */
   async validateToken(token: string): Promise<TokenPayload | null> {
     try {
       const decoded = jwt.verify(token, config.jwt.secret as Secret) as TokenPayload;
       
-      // Verificar que el funcionario sigue activo
+      // Verificar que el funcionario sigue activo o es HABILITABLE
       const client = await usersPool.connect();
       try {
         const result = await client.query(
@@ -202,7 +206,8 @@ class AuthService {
           [decoded.funcionarioId]
         );
         
-        if (result.rows.length === 0 || result.rows[0].estado !== "ACTIVA") {
+        const estado = result.rows[0]?.estado;
+        if (result.rows.length === 0 || (estado !== "ACTIVA" && estado !== "HABILITABLE")) {
           return null;
         }
         
@@ -217,6 +222,7 @@ class AuthService {
 
   /**
    * Cambiar contraseña
+   * Si el usuario está en estado HABILITABLE, se activa la cuenta automáticamente
    */
   async cambiarPassword(
     funcionarioId: number,
@@ -224,50 +230,105 @@ class AuthService {
     passwordNueva: string,
     ip: string,
     userAgent: string
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; cuentaActivada?: boolean }> {
     const client = await usersPool.connect();
 
     try {
       const result = await client.query(
-        "SELECT password_hash FROM funcionarios WHERE funcionario_id = $1",
+        `SELECT f.password_hash, f.estado, f.correo_institucional, r.nombre as rol_nombre
+         FROM funcionarios f
+         JOIN roles r ON f.rol_id = r.rol_id
+         WHERE f.funcionario_id = $1`,
         [funcionarioId]
       );
 
       if (result.rows.length === 0) {
-        return false;
+        return { success: false };
       }
 
-      const passwordValid = await bcrypt.compare(passwordActual, result.rows[0].password_hash);
+      const { password_hash, estado, correo_institucional, rol_nombre } = result.rows[0];
+      const esHabilitable = estado === "HABILITABLE";
+
+      const passwordValid = await bcrypt.compare(passwordActual, password_hash);
       if (!passwordValid) {
         await auditService.log({
           tipoEvento: "CAMBIO_PASSWORD_FALLIDO",
           usuarioId: funcionarioId,
+          usuarioCorreo: correo_institucional,
+          rolUsuario: rol_nombre,
           moduloAfectado: "AUTH",
           descripcion: "Intento de cambio de contraseña con password actual incorrecto",
           ipOrigen: ip,
           userAgent,
         });
-        return false;
+        return { success: false };
       }
 
       const nuevoHash = await bcrypt.hash(passwordNueva, 12);
-      await client.query(
-        `UPDATE funcionarios 
-         SET password_hash = $1, fecha_actualizacion = NOW()
-         WHERE funcionario_id = $2`,
-        [nuevoHash, funcionarioId]
-      );
+      
+      // Si es HABILITABLE, activar la cuenta al cambiar contraseña
+      if (esHabilitable) {
+        await client.query(
+          `UPDATE funcionarios 
+           SET password_hash = $1, estado = 'ACTIVA', fecha_actualizacion = NOW()
+           WHERE funcionario_id = $2`,
+          [nuevoHash, funcionarioId]
+        );
+
+        // Registrar cambio de estado en historial
+        await this.registrarCambioEstado(
+          client,
+          funcionarioId,
+          "HABILITABLE",
+          "ACTIVA",
+          funcionarioId // El propio usuario activa su cuenta
+        );
+
+        await auditService.log({
+          tipoEvento: "ACTIVACION_CUENTA_PRIMER_LOGIN",
+          usuarioId: funcionarioId,
+          usuarioCorreo: correo_institucional,
+          rolUsuario: rol_nombre,
+          moduloAfectado: "AUTH",
+          descripcion: "Cuenta activada tras cambio de contraseña en primer login",
+          datosAfectados: { 
+            estadoAnterior: "HABILITABLE", 
+            estadoNuevo: "ACTIVA",
+            funcionarioId,
+            correo: correo_institucional,
+          },
+          ipOrigen: ip,
+          userAgent,
+        });
+      } else {
+        await client.query(
+          `UPDATE funcionarios 
+           SET password_hash = $1, fecha_actualizacion = NOW()
+           WHERE funcionario_id = $2`,
+          [nuevoHash, funcionarioId]
+        );
+      }
 
       await auditService.log({
         tipoEvento: "CAMBIO_PASSWORD_EXITOSO",
         usuarioId: funcionarioId,
+        usuarioCorreo: correo_institucional,
+        rolUsuario: rol_nombre,
         moduloAfectado: "AUTH",
-        descripcion: "Contraseña cambiada exitosamente",
+        descripcion: esHabilitable 
+          ? "Contraseña cambiada exitosamente en primer login - cuenta activada"
+          : "Contraseña cambiada exitosamente",
+        datosAfectados: {
+          funcionarioId,
+          correo: correo_institucional,
+          primerLogin: esHabilitable,
+          cuentaActivada: esHabilitable,
+        },
         ipOrigen: ip,
         userAgent,
       });
 
-      return true;
+      return { success: true, cuentaActivada: esHabilitable };
     } finally {
       client.release();
     }

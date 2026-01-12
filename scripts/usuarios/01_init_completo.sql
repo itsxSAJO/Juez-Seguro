@@ -59,7 +59,10 @@ CREATE TABLE IF NOT EXISTS funcionarios (
     ultimo_login TIMESTAMPTZ,
     
     -- Restricciones
-    CONSTRAINT chk_estado_funcionario CHECK (estado IN ('ACTIVA', 'INACTIVA', 'BLOQUEADA', 'SUSPENDIDA')),
+    -- Estados: ACTIVA (puede operar), INACTIVA (deshabilitado), BLOQUEADA (por intentos fallidos),
+    --          SUSPENDIDA (suspensión administrativa), HABILITABLE (nuevo usuario pendiente activación),
+    --          PENDIENTE (pendiente de aprobación)
+    CONSTRAINT chk_estado_funcionario CHECK (estado IN ('ACTIVA', 'INACTIVA', 'BLOQUEADA', 'SUSPENDIDA', 'HABILITABLE', 'PENDIENTE')),
     CONSTRAINT chk_intentos_fallidos CHECK (intentos_fallidos >= 0 AND intentos_fallidos <= 10)
 );
 

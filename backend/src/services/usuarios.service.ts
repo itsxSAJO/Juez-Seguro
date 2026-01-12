@@ -407,7 +407,7 @@ class FuncionariosService {
 
         // Registrar cambio de estado en historial
         await client.query(
-          `INSERT INTO historial_estados (funcionario_id, estado_anterior, estado_nuevo, usuario_modificador_id)
+          `INSERT INTO historial_estados (funcionario_id, estado_anterior, estado_nuevo, modificado_por_id)
            VALUES ($1, $2, $3, $4)`,
           [id, funcionarioActual.estado, input.estado, adminId]
         );
@@ -473,7 +473,7 @@ class FuncionariosService {
 
       // Registrar en historial
       await client.query(
-        `INSERT INTO historial_estados (funcionario_id, estado_anterior, estado_nuevo, usuario_modificador_id)
+        `INSERT INTO historial_estados (funcionario_id, estado_anterior, estado_nuevo, modificado_por_id)
          VALUES ($1, $2, $3, $4)`,
         [id, estadoAnterior, nuevoEstado, adminId]
       );
@@ -518,7 +518,7 @@ class FuncionariosService {
       const result = await client.query(
         `SELECT h.*, f.nombres_completos as modificador_nombre
          FROM historial_estados h
-         LEFT JOIN funcionarios f ON h.usuario_modificador_id = f.funcionario_id
+         LEFT JOIN funcionarios f ON h.modificado_por_id = f.funcionario_id
          WHERE h.funcionario_id = $1
          ORDER BY h.fecha_cambio DESC`,
         [funcionarioId]

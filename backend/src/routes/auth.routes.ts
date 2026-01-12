@@ -162,7 +162,7 @@ router.post("/cambiar-password", authenticate, async (req: Request, res: Respons
       userAgent
     );
 
-    if (!result) {
+    if (!result.success) {
       res.status(400).json({
         success: false,
         error: "Contraseña actual incorrecta",
@@ -172,7 +172,10 @@ router.post("/cambiar-password", authenticate, async (req: Request, res: Respons
 
     res.json({
       success: true,
-      message: "Contraseña cambiada correctamente",
+      message: result.cuentaActivada 
+        ? "Contraseña cambiada correctamente. Su cuenta ha sido activada."
+        : "Contraseña cambiada correctamente",
+      cuentaActivada: result.cuentaActivada,
     });
   } catch (error) {
     log.error("Error en cambiar-password:", error);

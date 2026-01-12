@@ -68,6 +68,7 @@ export async function authenticate(
 /**
  * Middleware de autorización por roles
  * Verifica que el usuario tenga uno de los roles permitidos
+ * NOTA: Los usuarios HABILITABLE solo pueden acceder a /cambiar-password
  */
 export function authorize(...allowedRoles: UserRole[]) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -76,6 +77,16 @@ export function authorize(...allowedRoles: UserRole[]) {
         res.status(401).json({
           success: false,
           error: "Usuario no autenticado",
+        });
+        return;
+      }
+
+      // Usuarios HABILITABLE solo pueden cambiar contraseña
+      if (req.user.requiereCambioPassword) {
+        res.status(403).json({
+          success: false,
+          error: "Debe cambiar su contraseña antes de acceder al sistema",
+          code: "PASSWORD_CHANGE_REQUIRED",
         });
         return;
       }

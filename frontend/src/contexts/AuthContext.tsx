@@ -38,8 +38,10 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  requiereCambioPassword: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User; requiereCambioPassword?: boolean }>;
   logout: () => void;
+  completarCambioPassword: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -105,12 +107,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [requiereCambioPassword, setRequiereCambioPassword] = useState(false);
 
   // Restaurar sesión al cargar - Solo desde sessionStorage, no localStorage
   useEffect(() => {
     const restoreSession = async () => {
       // Usar sessionStorage en lugar de localStorage (se limpia al cerrar navegador)
       const storedToken = sessionStorage.getItem(TOKEN_KEY);
+      const storedRequiereCambio = sessionStorage.getItem("requiereCambioPassword") === "true";
 
       if (storedToken) {
         // Verificar si el token no ha expirado
@@ -119,13 +123,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (userFromToken) {
             setToken(storedToken);
             setUser(userFromToken);
+            setRequiereCambioPassword(storedRequiereCambio);
           } else {
             // Token inválido
             sessionStorage.removeItem(TOKEN_KEY);
+            sessionStorage.removeItem("requiereCambioPassword");
           }
         } else {
           // Token expirado, limpiar
           sessionStorage.removeItem(TOKEN_KEY);
+          sessionStorage.removeItem("requiereCambioPassword");
         }
       }
 
@@ -179,6 +186,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       // Login exitoso - Solo guardamos el token en sessionStorage
       const receivedToken = data.data.token;
+      const requiereCambio = data.data.requiereCambioPassword || false;
       
       // Construir datos del usuario desde la respuesta (para uso inmediato)
       const userData: User = {
@@ -195,11 +203,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser(userData);
       setToken(receivedToken);
+      setRequiereCambioPassword(requiereCambio);
       
       // Solo guardar el token en sessionStorage (no datos del usuario)
       sessionStorage.setItem(TOKEN_KEY, receivedToken);
+      
+      // Si requiere cambio de password, guardarlo también
+      if (requiereCambio) {
+        sessionStorage.setItem("requiereCambioPassword", "true");
+      }
 
-      return { success: true, user: userData };
+      return { success: true, user: userData, requiereCambioPassword: requiereCambio };
     } catch (error) {
       console.error("Login error:", error);
       return { 
@@ -212,10 +226,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(() => {
     setUser(null);
     setToken(null);
+    setRequiereCambioPassword(false);
     sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem("requiereCambioPassword");
     // Limpiar también localStorage por si quedaron datos antiguos
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+  }, []);
+
+  // Función para marcar que el usuario completó el cambio de contraseña
+  const completarCambioPassword = useCallback(() => {
+    setRequiereCambioPassword(false);
+    sessionStorage.removeItem("requiereCambioPassword");
+    // Actualizar estado del usuario a ACTIVA
+    setUser((prev) => prev ? { ...prev, estado: "ACTIVA" } : null);
   }, []);
 
   return (
@@ -225,8 +249,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         token,
         isAuthenticated: !!user && !!token, 
         isLoading,
+        requiereCambioPassword,
         login, 
-        logout 
+        logout,
+        completarCambioPassword,
       }}
     >
       {children}
@@ -246,8 +272,10 @@ export const useAuth = () => {
         token: null,
         isAuthenticated: false,
         isLoading: true,
+        requiereCambioPassword: false,
         login: async () => ({ success: false, error: "Context not ready" }),
         logout: () => {},
+        completarCambioPassword: () => {},
       } as AuthContextType;
     }
     throw new Error("useAuth must be used within an AuthProvider");

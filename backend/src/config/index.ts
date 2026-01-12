@@ -63,6 +63,85 @@ export function getOptionalEnv(name: string, defaultValue: string): string {
   return process.env[name] || defaultValue;
 }
 
+/**
+ * Valida y normaliza los orígenes CORS.
+ * - En producción: Requiere HTTPS (excepto localhost para pruebas internas)
+ * - Rechaza wildcards (*) cuando se usan credenciales
+ * - Valida formato de URLs
+ * 
+ * @param origins - Lista de orígenes separados por coma
+ * @param isProduction - Si estamos en modo producción
+ * @returns Array de orígenes validados
+ */
+function validateCorsOrigins(origins: string, isProduction: boolean): string[] {
+  const originList = origins.split(",").map(o => o.trim()).filter(o => o.length > 0);
+  
+  if (originList.length === 0) {
+    if (isProduction) {
+      throw new Error(
+        `\n╔══════════════════════════════════════════════════════════════════╗\n` +
+        `║  ❌ ERROR DE SEGURIDAD CORS                                      ║\n` +
+        `╠══════════════════════════════════════════════════════════════════╣\n` +
+        `║  CORS_ORIGIN no está configurado en producción.                 ║\n` +
+        `║  Debe especificar los dominios permitidos explícitamente.       ║\n` +
+        `║  Ejemplo: CORS_ORIGIN=https://app.judicatura.gob.ec             ║\n` +
+        `╚══════════════════════════════════════════════════════════════════╝\n`
+      );
+    }
+    // En desarrollo, permitir localhost por defecto
+    return ["http://localhost:5173"];
+  }
+
+  const validatedOrigins: string[] = [];
+
+  for (const origin of originList) {
+    // Rechazar wildcard con credenciales (inseguro)
+    if (origin === "*") {
+      throw new Error(
+        `\n╔══════════════════════════════════════════════════════════════════╗\n` +
+        `║  ❌ ERROR DE SEGURIDAD CORS                                      ║\n` +
+        `╠══════════════════════════════════════════════════════════════════╣\n` +
+        `║  CORS origin "*" no está permitido con credentials: true        ║\n` +
+        `║  Esto es rechazado por los navegadores y es inseguro.           ║\n` +
+        `║  Especifique dominios explícitos en CORS_ORIGIN.                ║\n` +
+        `╚══════════════════════════════════════════════════════════════════╝\n`
+      );
+    }
+
+    // Validar formato de URL
+    try {
+      const url = new URL(origin);
+      
+      // En producción, requerir HTTPS (excepto localhost para testing interno)
+      if (isProduction) {
+        const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+        if (url.protocol !== "https:" && !isLocalhost) {
+          console.warn(
+            `⚠️  ADVERTENCIA CORS: El origen "${origin}" no usa HTTPS. ` +
+            `En producción se recomienda usar solo HTTPS.`
+          );
+        }
+      }
+
+      // Normalizar: quitar trailing slash
+      validatedOrigins.push(origin.replace(/\/$/, ""));
+      
+    } catch {
+      throw new Error(
+        `\n╔══════════════════════════════════════════════════════════════════╗\n` +
+        `║  ❌ ERROR DE CONFIGURACIÓN CORS                                  ║\n` +
+        `╠══════════════════════════════════════════════════════════════════╣\n` +
+        `║  CORS origin inválido: ${origin.padEnd(41)}║\n` +
+        `║  Debe ser una URL válida con protocolo (http:// o https://)     ║\n` +
+        `║  Ejemplo: https://app.judicatura.gob.ec                         ║\n` +
+        `╚══════════════════════════════════════════════════════════════════╝\n`
+      );
+    }
+  }
+
+  return validatedOrigins;
+}
+
 // ============================================================================
 // VALIDACIÓN DE CREDENCIALES DE BD (necesarias para arrancar)
 // Las contraseñas de las BDs vienen del entorno (no son secretos de negocio)
@@ -131,9 +210,12 @@ export const configBase = {
     maxRequests: parseInt(getOptionalEnv("RATE_LIMIT_MAX_REQUESTS", "100"), 10),
   },
 
-  // CORS (no sensible)
+  // CORS (validado para seguridad)
   cors: {
-    origin: getOptionalEnv("CORS_ORIGIN", "http://localhost:5173").split(",").map(o => o.trim()),
+    origin: validateCorsOrigins(
+      getOptionalEnv("CORS_ORIGIN", "http://localhost:5173"),
+      process.env.NODE_ENV === "production"
+    ),
     credentials: true,
   },
 

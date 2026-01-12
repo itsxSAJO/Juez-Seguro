@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import CambiarPasswordModal from "@/components/funcionarios/CambiarPasswordModal";
 
 const loginSchema = z.object({
   email: z.string().email("Ingrese un correo electrónico válido"),
@@ -19,12 +20,13 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 const LoginFuncionarios = () => {
-  const { login, user } = useAuth();
+  const { login, user, requiereCambioPassword } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCambiarPasswordModal, setShowCambiarPasswordModal] = useState(false);
 
   // Función para obtener la ruta del dashboard según el rol
   const getDashboardRoute = (cargo: string): string => {
@@ -50,11 +52,27 @@ const LoginFuncionarios = () => {
     setIsLoading(false);
 
     if (result.success && result.user) {
+      // Si requiere cambio de contraseña, mostrar modal
+      if (result.requiereCambioPassword) {
+        setShowCambiarPasswordModal(true);
+        return;
+      }
+      
       // Redirigir al dashboard según el rol del usuario
       const dashboardRoute = getDashboardRoute(result.user.cargo);
       navigate(dashboardRoute, { replace: true });
     } else {
       setError(result.error || "Error al iniciar sesión");
+    }
+  };
+
+  // Callback cuando el usuario completa el cambio de contraseña
+  const handlePasswordChanged = () => {
+    setShowCambiarPasswordModal(false);
+    // Redirigir al dashboard
+    if (user) {
+      const dashboardRoute = getDashboardRoute(user.cargo);
+      navigate(dashboardRoute, { replace: true });
     }
   };
 
@@ -182,6 +200,12 @@ const LoginFuncionarios = () => {
           </Link>
         </div>
       </div>
+
+      {/* Modal de cambio de contraseña obligatorio */}
+      <CambiarPasswordModal
+        open={showCambiarPasswordModal}
+        onSuccess={handlePasswordChanged}
+      />
     </div>
   );
 };

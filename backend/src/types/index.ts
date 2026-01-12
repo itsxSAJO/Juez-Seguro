@@ -60,7 +60,7 @@ export interface HistorialEstado {
   estado_anterior: EstadoCuenta | null;
   estado_nuevo: EstadoCuenta;
   fecha_cambio: Date;
-  usuario_modificador_id: number | null;
+  modificado_por_id: number | null;
 }
 
 export interface TokenPayload {
@@ -71,6 +71,7 @@ export interface TokenPayload {
   rolId: number;
   unidadJudicial: string;  // FIA_USB: Atributo de sesión
   materia: string;         // FIA_USB: Atributo de sesión
+  requiereCambioPassword?: boolean; // Flag para primer login (HABILITABLE)
   iat?: number;
   exp?: number;
 }
