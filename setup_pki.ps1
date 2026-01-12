@@ -10,7 +10,9 @@
 
 param(
     [switch]$Force,
-    [string]$PfxPassword = "Seguridad2026"
+    # [SEGURIDAD S2068] Eliminado valor por defecto hardcodeado.
+    # Ahora es opcional aquí, pero se valida abajo.
+    [string]$PfxPassword
 )
 
 # Desactivar ErrorActionPreference para comandos externos
@@ -20,6 +22,27 @@ Write-Host "=============================================="
 Write-Host "  JUEZ SEGURO - Generacion de PKI Sprint 3"
 Write-Host "=============================================="
 Write-Host ""
+
+# ----------------------------------------------------------------------------
+# VALIDACIÓN DE SEGURIDAD DE CREDENCIALES
+# ----------------------------------------------------------------------------
+# Intentar obtener la contraseña de la variable de entorno si no se pasó por argumento
+if ([string]::IsNullOrWhiteSpace($PfxPassword)) {
+    if ($env:PFX_PASSWORD) {
+        $PfxPassword = $env:PFX_PASSWORD
+        Write-Host "[INFO] Usando contraseña PFX desde variable de entorno PFX_PASSWORD." -ForegroundColor Cyan
+    }
+    else {
+        # Fall Fast: Si no hay contraseña, detenemos la ejecución.
+        Write-Host "[ERROR] Falta la contraseña para los certificados PFX." -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Debe proporcionar la contraseña de una de las siguientes formas:" -ForegroundColor Yellow
+        Write-Host "  1. Como argumento: .\setup_pki.ps1 -PfxPassword 'SuClaveSegura'"
+        Write-Host "  2. Como variable de entorno: `$env:PFX_PASSWORD = 'SuClaveSegura'"
+        Write-Host ""
+        exit 1
+    }
+}
 
 # Verificar que OpenSSL este disponible
 try {
