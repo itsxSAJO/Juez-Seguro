@@ -7,6 +7,11 @@
 -- ============================================================================
 -- Ejecutar en: db_usuarios (puerto 5435)
 -- ============================================================================
+-- IMPORTANTE: Los campos identificacion y nombres_completos usan
+-- VARCHAR(500) para almacenar datos CIFRADOS con AES-256-GCM a nivel de
+-- aplicación. El cifrado se realiza en el backend usando PBKDF2 (100,000
+-- iteraciones) para derivación de clave.
+-- ============================================================================
 
 -- Habilitar extensiones necesarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -31,13 +36,15 @@ COMMENT ON TABLE roles IS 'Roles del sistema judicial según Common Criteria';
 -- ============================================================================
 -- TABLA: funcionarios
 -- Propósito: Almacenamiento de funcionarios judiciales (jueces, secretarios, admin)
+-- CIFRADO: identificacion y nombres_completos están cifrados con AES-256-GCM
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS funcionarios (
     funcionario_id SERIAL PRIMARY KEY,
     
-    -- Identificación
-    identificacion VARCHAR(20) NOT NULL UNIQUE,
-    nombres_completos VARCHAR(200) NOT NULL,
+    -- Identificación (CIFRADO: VARCHAR(500) para almacenar datos cifrados)
+    identificacion VARCHAR(500) NOT NULL,
+    nombres_completos VARCHAR(500) NOT NULL,
+    -- correo_institucional NO está cifrado para permitir búsquedas en login
     correo_institucional VARCHAR(255) NOT NULL UNIQUE,
     
     -- Autenticación
@@ -49,20 +56,19 @@ CREATE TABLE IF NOT EXISTS funcionarios (
     materia VARCHAR(100),
     
     -- Estado de la cuenta
-    estado VARCHAR(30) NOT NULL DEFAULT 'ACTIVA',
+    estado VARCHAR(30) NOT NULL DEFAULT 'ACTIVO',
     intentos_fallidos INTEGER DEFAULT 0,
     fecha_bloqueo TIMESTAMPTZ,
     
     -- Auditoría
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    fecha_actualizacion TIMESTAMPTZ DEFAULT NOW(),
-    ultimo_login TIMESTAMPTZ,
+    fecha_modificacion TIMESTAMPTZ DEFAULT NOW(),
+    ultimo_acceso TIMESTAMPTZ,
     
     -- Restricciones
-    -- Estados: ACTIVA (puede operar), INACTIVA (deshabilitado), BLOQUEADA (por intentos fallidos),
-    --          SUSPENDIDA (suspensión administrativa), HABILITABLE (nuevo usuario pendiente activación),
-    --          PENDIENTE (pendiente de aprobación)
-    CONSTRAINT chk_estado_funcionario CHECK (estado IN ('ACTIVA', 'INACTIVA', 'BLOQUEADA', 'SUSPENDIDA', 'HABILITABLE', 'PENDIENTE')),
+    -- Estados: ACTIVO (puede operar), INACTIVO (deshabilitado), BLOQUEADO (por intentos fallidos),
+    --          SUSPENDIDO (suspensión administrativa)
+    CONSTRAINT chk_estado_funcionario CHECK (estado IN ('ACTIVO', 'INACTIVO', 'BLOQUEADO', 'SUSPENDIDO')),
     CONSTRAINT chk_intentos_fallidos CHECK (intentos_fallidos >= 0 AND intentos_fallidos <= 10)
 );
 
@@ -125,10 +131,10 @@ COMMENT ON TABLE sesiones_activas IS 'Control de sesiones activas para prevenir 
 -- ============================================================================
 -- FUNCIÓN: Actualizar timestamp de modificación
 -- ============================================================================
-CREATE OR REPLACE FUNCTION actualizar_fecha_actualizacion()
+CREATE OR REPLACE FUNCTION actualizar_fecha_modificacion()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.fecha_actualizacion = NOW();
+    NEW.fecha_modificacion = NOW();
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -138,16 +144,23 @@ DROP TRIGGER IF EXISTS trigger_actualizar_fecha_funcionarios ON funcionarios;
 CREATE TRIGGER trigger_actualizar_fecha_funcionarios
     BEFORE UPDATE ON funcionarios
     FOR EACH ROW
-    EXECUTE FUNCTION actualizar_fecha_actualizacion();
+    EXECUTE FUNCTION actualizar_fecha_modificacion();
 
 -- ============================================================================
 -- DATOS INICIALES: Roles del Sistema
 -- ============================================================================
 INSERT INTO roles (nombre, descripcion) VALUES
-    ('ADMIN_CJ', 'Consejo de la Judicatura - Administración y Supervisión del Sistema'),
+    ('ADMIN', 'Consejo de la Judicatura - Administración y Supervisión del Sistema'),
     ('JUEZ', 'Juez - Gestión de causas asignadas y emisión de decisiones judiciales'),
     ('SECRETARIO', 'Secretario Judicial - Gestión operativa de causas, documentos y audiencias')
 ON CONFLICT (nombre) DO NOTHING;
+
+-- ============================================================================
+-- COMENTARIOS DE SEGURIDAD
+-- ============================================================================
+COMMENT ON COLUMN funcionarios.identificacion IS 'Cédula cifrada con AES-256-GCM - Requiere DATA_ENCRYPTION_KEY para descifrar';
+COMMENT ON COLUMN funcionarios.nombres_completos IS 'Nombre completo cifrado con AES-256-GCM - Requiere DATA_ENCRYPTION_KEY para descifrar';
+COMMENT ON COLUMN funcionarios.correo_institucional IS 'Correo institucional - NO CIFRADO para permitir búsquedas en login';
 
 -- ============================================================================
 -- DATOS DE DESARROLLO (Solo si no existen usuarios)
@@ -155,6 +168,7 @@ ON CONFLICT (nombre) DO NOTHING;
 -- Nota: Los usuarios se crean con el script TypeScript: npm run db:seed-users-dev
 -- El hash de contraseña se genera dinámicamente para evitar CWE-798
 -- Contraseña de desarrollo: Dev2026!Secure#Pass
+-- Los campos identificacion y nombres_completos se cifran automáticamente
 
 -- Verificación de creación
 DO $$
@@ -162,6 +176,7 @@ BEGIN
     RAISE NOTICE 'Schema de usuarios creado correctamente';
     RAISE NOTICE 'Roles insertados: %', (SELECT COUNT(*) FROM roles);
     RAISE NOTICE 'Para crear usuarios de desarrollo, ejecutar: npm run db:seed-users-dev';
+    RAISE NOTICE 'NOTA: identificacion y nombres_completos serán cifrados con AES-256-GCM';
 END $$;
 
 -- Mostrar tablas creadas

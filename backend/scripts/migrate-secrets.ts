@@ -78,6 +78,13 @@ const SECRETOS_INICIALES: SecretoInicial[] = [
     longitudGenerada: 32,
   },
   {
+    nombre: "DATA_ENCRYPTION_KEY",
+    tipo: "AES",
+    descripcion: "Clave AES-256-GCM para cifrar datos sensibles de funcionarios (identificación, nombres)",
+    generarAutomatico: true,
+    longitudGenerada: 32,
+  },
+  {
     nombre: "SMTP_USER",
     tipo: "SMTP",
     descripcion: "Correo electrónico Gmail para envío de notificaciones",
