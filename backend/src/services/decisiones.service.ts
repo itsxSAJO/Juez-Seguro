@@ -684,7 +684,7 @@ class DecisionesService {
       const documentoResult = await client.query(
         `INSERT INTO documentos (
           id, causa_id, tipo, nombre, ruta, hash_integridad,
-          tamanio_bytes, mime_type, subido_por_id, subido_por_nombre, fecha_subida, estado
+          tamanio_bytes, mime_type, subido_por_id, subido_por_pseudonimo, fecha_subida, estado
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'application/pdf', $8, $9, NOW(), 'firmado')
         RETURNING id`,
         [
@@ -695,7 +695,7 @@ class DecisionesService {
           rutaRelativa,
           hashFinal,
           pdfContent.length,
-          usuario.funcionarioId,
+          usuario.funcionarioId, // ID del juez que firma
           decision.juezPseudonimo, // Pseudónimo del juez que firma
         ]
       );
