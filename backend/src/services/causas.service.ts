@@ -333,19 +333,22 @@ class CausasService {
     // 4. Obtener o crear pseudónimo del juez seleccionado
     const juezPseudonimo = await this.obtenerPseudonimo(juezSeleccionado.funcionario_id);
 
-    // 5. Crear la causa
+    // 5. Obtener o crear pseudónimo del secretario (FDP - Protección de Identidad)
+    const secretarioPseudonimo = await this.obtenerPseudonimo(secretario.funcionarioId);
+
+    // 6. Crear la causa
     const client = await casesPool.connect();
 
     try {
       await client.query("BEGIN");
 
-      // Insertar causa
+      // Insertar causa con pseudónimo del secretario
       const resultCausa = await client.query(
         `INSERT INTO causas (
           numero_proceso, materia, tipo_proceso, unidad_judicial,
-          juez_asignado_id, juez_pseudonimo, secretario_creador_id, estado_procesal,
+          juez_asignado_id, juez_pseudonimo, secretario_creador_id, secretario_pseudonimo, estado_procesal,
           actor_nombre, demandado_nombre, descripcion
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'INICIADA', $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'INICIADA', $9, $10, $11)
         RETURNING *`,
         [
           numeroProceso,
@@ -355,6 +358,7 @@ class CausasService {
           juezSeleccionado.funcionario_id,
           juezPseudonimo,
           secretario.funcionarioId,
+          secretarioPseudonimo,  // Pseudónimo del secretario que registró
           input.actorNombre || null,
           input.demandadoNombre || null,
           input.descripcion || null,
@@ -363,7 +367,7 @@ class CausasService {
 
       const causa = resultCausa.rows[0] as Causa;
 
-      // 6. Crear expediente electrónico asociado automáticamente
+      // 7. Crear expediente electrónico asociado automáticamente
       await client.query(
         `INSERT INTO expedientes (causa_id, observaciones)
          VALUES ($1, $2)`,
@@ -372,7 +376,7 @@ class CausasService {
 
       await client.query("COMMIT");
 
-      // 7. Registrar en auditoría
+      // 8. Registrar en auditoría
       await auditService.log({
         tipoEvento: "CREACION_CAUSA",
         usuarioId: secretario.funcionarioId,
@@ -392,7 +396,7 @@ class CausasService {
         userAgent,
       });
 
-      // 8. Notificar al juez asignado sobre la nueva causa
+      // 9. Notificar al juez asignado sobre la nueva causa
       try {
         await notificacionesService.notificarCausaAsignada(
           juezSeleccionado.funcionario_id,
