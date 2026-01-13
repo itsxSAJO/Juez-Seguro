@@ -349,8 +349,13 @@ class PlazosService {
 
   /**
    * Obtener plazo por ID
+   * Registra auditoría de visualización
    */
-  async obtenerPlazoPorId(plazoId: number): Promise<PlazoProcesal | null> {
+  async obtenerPlazoPorId(
+    plazoId: number,
+    usuario?: TokenPayload,
+    ipOrigen?: string
+  ): Promise<PlazoProcesal | null> {
     const query = `
       SELECT * FROM plazos_procesales WHERE plazo_id = $1
     `;
@@ -358,21 +363,81 @@ class PlazosService {
     const result = await casesPool.query(query, [plazoId]);
     if (result.rows.length === 0) return null;
 
-    return this.mapearPlazo(result.rows[0]);
+    const plazo = this.mapearPlazo(result.rows[0]);
+
+    // Auditoría de visualización (si se proporciona usuario)
+    if (usuario && ipOrigen) {
+      await auditService.log({
+        tipoEvento: "VISUALIZACION_PLAZO",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "PLAZOS",
+        descripcion: `Visualización de plazo ${plazoId}`,
+        datosAfectados: {
+          plazoId,
+          causaId: plazo.causaId,
+          tipoPlazo: plazo.tipoPlazo,
+        },
+        ipOrigen,
+        userAgent: "sistema",
+      });
+    }
+
+    return plazo;
   }
 
   /**
-   * Listar plazos de una causa
+   * Listar plazos de una causa con información de partes
+   * Registra auditoría de consulta
    */
-  async listarPlazosPorCausa(causaId: number): Promise<PlazoProcesal[]> {
+  async listarPlazosPorCausa(
+    causaId: number,
+    usuario?: TokenPayload,
+    ipOrigen?: string
+  ): Promise<(PlazoProcesal & { numeroProceso?: string; parteResponsableNombre?: string })[]> {
     const query = `
-      SELECT * FROM plazos_procesales 
-      WHERE causa_id = $1
-      ORDER BY fecha_vencimiento ASC
+      SELECT 
+        p.*,
+        c.numero_proceso,
+        c.actor_nombre,
+        c.demandado_nombre,
+        CASE 
+          WHEN p.parte_responsable = 'actor' THEN c.actor_nombre
+          WHEN p.parte_responsable = 'demandado' THEN c.demandado_nombre
+          WHEN p.parte_responsable = 'ambas_partes' THEN CONCAT(c.actor_nombre, ' / ', c.demandado_nombre)
+          ELSE p.parte_responsable
+        END as parte_responsable_nombre
+      FROM plazos_procesales p
+      LEFT JOIN causas c ON p.causa_id = c.causa_id
+      WHERE p.causa_id = $1
+      ORDER BY p.fecha_vencimiento ASC
     `;
 
     const result = await casesPool.query(query, [causaId]);
-    return result.rows.map((row) => this.mapearPlazo(row));
+    const plazos = result.rows.map((row) => ({
+      ...this.mapearPlazo(row),
+      numeroProceso: row.numero_proceso as string | undefined,
+      parteResponsableNombre: row.parte_responsable_nombre as string | undefined,
+    }));
+
+    // Auditoría de consulta (si se proporciona usuario)
+    if (usuario && ipOrigen) {
+      await auditService.log({
+        tipoEvento: "CONSULTA_PLAZOS",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "PLAZOS",
+        descripcion: `Consulta de plazos de causa ${causaId}`,
+        datosAfectados: {
+          causaId,
+          cantidadResultados: plazos.length,
+        },
+        ipOrigen,
+        userAgent: "sistema",
+      });
+    }
+
+    return plazos;
   }
 
   /**

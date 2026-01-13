@@ -127,13 +127,17 @@ router.get(
     try {
       const causaId = parseInt(req.params.causaId);
       const { estado, destinatarioTipo } = req.query;
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
 
       const notificaciones = await notificacionesProcesalesService.listarNotificacionesPorCausa(
         causaId,
         {
           estado: estado as EstadoNotificacionProcesal | undefined,
           destinatarioTipo: destinatarioTipo as string | undefined,
-        }
+        },
+        usuario,
+        ipOrigen
       );
 
       res.json({
@@ -160,9 +164,15 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const decisionId = parseInt(req.params.decisionId);
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
 
       const notificaciones =
-        await notificacionesProcesalesService.listarNotificacionesPorDecision(decisionId);
+        await notificacionesProcesalesService.listarNotificacionesPorDecision(
+          decisionId,
+          usuario,
+          ipOrigen
+        );
 
       res.json({
         success: true,
@@ -188,9 +198,15 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const notificacionId = parseInt(req.params.id);
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
 
       const notificacion =
-        await notificacionesProcesalesService.obtenerNotificacionPorId(notificacionId);
+        await notificacionesProcesalesService.obtenerNotificacionPorId(
+          notificacionId,
+          usuario,
+          ipOrigen
+        );
 
       if (!notificacion) {
         res.status(404).json({
@@ -347,8 +363,14 @@ router.get(
   authorize("JUEZ", "SECRETARIO", "ADMIN_CJ"),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
+
       const notificaciones =
-        await notificacionesProcesalesService.listarNotificacionesPendientes();
+        await notificacionesProcesalesService.listarNotificacionesPendientes(
+          usuario,
+          ipOrigen
+        );
 
       res.json({
         success: true,
@@ -374,9 +396,15 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const causaId = parseInt(req.params.causaId);
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
 
       const estadisticas =
-        await notificacionesProcesalesService.obtenerEstadisticasPorCausa(causaId);
+        await notificacionesProcesalesService.obtenerEstadisticasPorCausa(
+          causaId,
+          usuario,
+          ipOrigen
+        );
 
       res.json({
         success: true,

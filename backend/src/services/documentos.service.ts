@@ -11,7 +11,7 @@ import fs from "fs/promises";
 import path from "path";
 import { auditService } from "./audit.service.js";
 import { loggers } from "./logger.service.js";
-import type { Documento, TipoDocumento } from "../types/index.js";
+import type { Documento, TipoDocumento, TokenPayload } from "../types/index.js";
 
 const log = loggers.documentos;
 
@@ -334,8 +334,13 @@ class DocumentosService {
 
   /**
    * Obtiene documentos de una causa con el nombre del secretario que los subió
+   * Registra auditoría de consulta
    */
-  async getDocumentosByCausa(causaId: string): Promise<Documento[]> {
+  async getDocumentosByCausa(
+    causaId: string,
+    usuario?: TokenPayload,
+    ipOrigen?: string
+  ): Promise<Documento[]> {
     const casesClient = await casesPool.connect();
     const usersClient = await usersPool.connect();
 
@@ -368,7 +373,7 @@ class DocumentosService {
       }
 
       // 4. Mapear documentos con pseudónimos de secretarios o jueces
-      return docsResult.rows.map(row => {
+      const documentos = docsResult.rows.map(row => {
         // Priorizar subido_por_pseudonimo si existe (usado para documentos firmados por jueces)
         // Sino usar el mapa de funcionarios o generar pseudónimo de secretario
         const pseudonimo = row.subido_por_pseudonimo || 
@@ -380,6 +385,25 @@ class DocumentosService {
           subidoPorNombre: pseudonimo,
         };
       });
+
+      // 5. Auditoría de consulta (si se proporciona usuario)
+      if (usuario && ipOrigen) {
+        await auditService.log({
+          tipoEvento: "CONSULTA_DOCUMENTOS",
+          usuarioId: usuario.funcionarioId,
+          usuarioCorreo: usuario.correo,
+          moduloAfectado: "DOCUMENTOS",
+          descripcion: `Consulta de documentos de causa ${causaId}`,
+          datosAfectados: {
+            causaId,
+            cantidadResultados: documentos.length,
+          },
+          ipOrigen,
+          userAgent: "sistema",
+        });
+      }
+
+      return documentos;
     } finally {
       casesClient.release();
       usersClient.release();
@@ -388,8 +412,13 @@ class DocumentosService {
 
   /**
    * Obtiene un documento por ID con pseudónimo del secretario
+   * Registra auditoría de visualización
    */
-  async getDocumentoById(id: string): Promise<Documento | null> {
+  async getDocumentoById(
+    id: string,
+    usuario?: TokenPayload,
+    ipOrigen?: string
+  ): Promise<Documento | null> {
     const casesClient = await casesPool.connect();
 
     try {
@@ -404,13 +433,34 @@ class DocumentosService {
 
       const doc = result.rows[0];
       // Generar pseudónimo para proteger identidad del secretario
-      const pseudonimo = `SECRETARIO-${String(doc.subido_por_id).padStart(4, '0')}`;
+      const pseudonimo = doc.subido_por_pseudonimo || `SECRETARIO-${String(doc.subido_por_id).padStart(4, '0')}`;
 
-      return {
+      const documento = {
         ...this.mapearDocumento(doc),
         subidoPor: pseudonimo,
         subidoPorNombre: pseudonimo,
       };
+
+      // Auditoría de visualización (si se proporciona usuario)
+      if (usuario && ipOrigen) {
+        await auditService.log({
+          tipoEvento: "VISUALIZACION_DOCUMENTO",
+          usuarioId: usuario.funcionarioId,
+          usuarioCorreo: usuario.correo,
+          moduloAfectado: "DOCUMENTOS",
+          descripcion: `Visualización de documento ${id}`,
+          datosAfectados: {
+            documentoId: id,
+            causaId: documento.causaId,
+            tipoDocumento: documento.tipo,
+            nombreDocumento: documento.nombre,
+          },
+          ipOrigen,
+          userAgent: "sistema",
+        });
+      }
+
+      return documento;
     } finally {
       casesClient.release();
     }
@@ -479,10 +529,17 @@ class DocumentosService {
   /**
    * Obtiene el contenido binario del documento para descarga
    * HU-SJ-002: Lectura segura desde almacenamiento GUID
+   * Registra auditoría de descarga
    * @param id - ID del documento (UUID)
+   * @param usuario - Usuario que descarga (opcional para auditoría)
+   * @param ipOrigen - IP de origen (opcional para auditoría)
    * @returns Contenido del archivo y metadatos, o null si no existe
    */
-  async obtenerContenido(id: string): Promise<{
+  async obtenerContenido(
+    id: string,
+    usuario?: TokenPayload,
+    ipOrigen?: string
+  ): Promise<{
     contenido: Buffer;
     nombre: string;
     mimeType: string;
@@ -494,6 +551,27 @@ class DocumentosService {
 
     try {
       const contenido = await fs.readFile(rutaAbsoluta);
+
+      // Auditoría de descarga (si se proporciona usuario)
+      if (usuario && ipOrigen) {
+        await auditService.log({
+          tipoEvento: "DESCARGA_DOCUMENTO",
+          usuarioId: usuario.funcionarioId,
+          usuarioCorreo: usuario.correo,
+          moduloAfectado: "DOCUMENTOS",
+          descripcion: `Descarga de documento ${id}: ${documento.nombre}`,
+          datosAfectados: {
+            documentoId: id,
+            causaId: documento.causaId,
+            tipoDocumento: documento.tipo,
+            nombreDocumento: documento.nombre,
+            tamanioBytes: contenido.length,
+          },
+          ipOrigen,
+          userAgent: "sistema",
+        });
+      }
+
       return {
         contenido,
         nombre: documento.nombre,

@@ -899,6 +899,7 @@ const GestionNotificacionesProcesales = () => {
                               <p className="text-xs text-muted-foreground mt-1">
                                 <FileText className="w-3 h-3 inline mr-1" />
                                 Expediente: {notif.numeroProceso}
+                                {notif.decisionTitulo && ` - ${notif.decisionTitulo}`}
                               </p>
                             )}
                           </div>
@@ -967,9 +968,15 @@ const GestionNotificacionesProcesales = () => {
                               </div>
                               <h4 className="font-medium">{plazo.tipoPlazo}</h4>
                               <p className="text-sm text-muted-foreground">{plazo.descripcion}</p>
-                              {plazo.parteResponsable && (
+                              {plazo.numeroProceso && (
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  Responsable: {plazo.parteResponsable}
+                                  <FileText className="w-3 h-3 inline mr-1" />
+                                  Expediente: {plazo.numeroProceso}
+                                </p>
+                              )}
+                              {(plazo.parteResponsableNombre || plazo.parteResponsable) && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Responsable: {plazo.parteResponsableNombre || plazo.parteResponsable}
                                 </p>
                               )}
                             </div>

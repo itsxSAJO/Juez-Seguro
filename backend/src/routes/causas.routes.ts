@@ -134,6 +134,18 @@ router.get(
         return;
       }
 
+      // Auditoría de visualización de causa
+      await auditService.log({
+        tipoEvento: "VISUALIZACION_CAUSA",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "CASOS",
+        descripcion: `Visualización de causa ${id}`,
+        datosAfectados: { causaId: id, numeroProceso: causa.numeroProceso },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       // La verificación de propiedad ya se hizo en el middleware
       // Si llegamos aquí, el acceso está autorizado
 
@@ -177,6 +189,18 @@ router.get(
         });
         return;
       }
+
+      // Auditoría de visualización de expediente
+      await auditService.log({
+        tipoEvento: "VISUALIZACION_EXPEDIENTE",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "CASOS",
+        descripcion: `Visualización de expediente de causa ${id}`,
+        datosAfectados: { causaId: id, numeroProceso: expediente.causa?.numeroProceso },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.json({
         success: true,
@@ -345,6 +369,18 @@ router.get(
       // Importar dinámicamente el servicio de audiencias
       const { audienciasService } = await import("../services/audiencias.service.js");
       const historial = await audienciasService.getHistorialReprogramacionesByCausa(req.params.id);
+
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_HISTORIAL_REPROGRAMACIONES",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "CASOS",
+        descripcion: `Consulta de historial de reprogramaciones de causa ${req.params.id}`,
+        datosAfectados: { causaId: req.params.id, cantidadCambios: historial.length },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.json({
         success: true,

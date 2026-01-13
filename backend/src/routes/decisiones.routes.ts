@@ -133,6 +133,22 @@ router.get(
         return;
       }
 
+      // Auditoría de visualización
+      await auditService.log({
+        tipoEvento: "VISUALIZACION_DECISION",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "DECISIONES",
+        descripcion: `Visualización de decisión ${decisionId}`,
+        datosAfectados: { 
+          decisionId, 
+          causaId: decision.causaId,
+          tipoDecision: decision.tipoDecision,
+        },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       res.json({ success: true, data: decision });
     } catch (error) {
       next(error);

@@ -78,9 +78,10 @@ export interface NotificacionProcesal {
   creadoPorNombre?: string;
   ipOrigen?: string;
   
-  // Relaciones
+  // Relaciones (información de la causa y decisión)
   numeroProceso?: string;
   tipoDecision?: string;
+  decisionTitulo?: string;
 }
 
 export interface CrearNotificacionProcesalInput {

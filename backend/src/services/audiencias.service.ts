@@ -83,17 +83,24 @@ class AudienciasService {
       }
 
       // La tabla usa SERIAL, no UUID
+      // Extraer fecha y hora del timestamp para las columnas legacy
+      const fechaDate = new Date(input.fechaHora);
+      const fechaStr = fechaDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      const horaStr = fechaDate.toTimeString().split(' ')[0]; // HH:MM:SS
+      
       const result = await client.query(
         `INSERT INTO audiencias (
-          causa_id, tipo, fecha_programada, sala, duracion_minutos,
+          causa_id, tipo, fecha, hora, fecha_programada, sala, duracion_minutos,
           modalidad, observaciones, programado_por_id,
           estado, fecha_creacion
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PROGRAMADA', NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PROGRAMADA', NOW())
         RETURNING *, 
           fecha_programada as fecha_hora`,
         [
           input.causaId,
           input.tipo.toUpperCase(),
+          fechaStr,
+          horaStr,
           input.fechaHora,
           input.sala,
           input.duracionMinutos || 60,

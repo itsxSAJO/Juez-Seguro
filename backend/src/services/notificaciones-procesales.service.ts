@@ -330,9 +330,12 @@ class NotificacionesProcesalesService {
 
   /**
    * Obtener notificación por ID
+   * Registra auditoría de visualización
    */
   async obtenerNotificacionPorId(
-    notificacionId: number
+    notificacionId: number,
+    usuario?: TokenPayload,
+    ipOrigen?: string
   ): Promise<NotificacionProcesal | null> {
     const query = `
       SELECT * FROM notificaciones_procesales WHERE notificacion_id = $1
@@ -341,48 +344,101 @@ class NotificacionesProcesalesService {
     const result = await casesPool.query(query, [notificacionId]);
     if (result.rows.length === 0) return null;
 
-    return this.mapearNotificacion(result.rows[0]);
+    const notificacion = this.mapearNotificacion(result.rows[0]);
+
+    // Auditoría de visualización (si se proporciona usuario)
+    if (usuario && ipOrigen) {
+      await auditService.log({
+        tipoEvento: "VISUALIZACION_NOTIFICACION",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: `Visualización de notificación ${notificacionId}`,
+        datosAfectados: {
+          notificacionId,
+          causaId: notificacion.causaId,
+          destinatario: notificacion.destinatarioNombre,
+        },
+        ipOrigen,
+        userAgent: "sistema",
+      });
+    }
+
+    return notificacion;
   }
 
   /**
-   * Listar notificaciones de una causa
+   * Listar notificaciones de una causa con información completa
+   * Registra auditoría de consulta
    */
   async listarNotificacionesPorCausa(
     causaId: number,
     filtros?: {
       estado?: EstadoNotificacionProcesal;
       destinatarioTipo?: string;
-    }
+    },
+    usuario?: TokenPayload,
+    ipOrigen?: string
   ): Promise<NotificacionProcesal[]> {
     let query = `
-      SELECT * FROM notificaciones_procesales 
-      WHERE causa_id = $1
+      SELECT 
+        np.*,
+        c.numero_proceso,
+        d.tipo_decision,
+        d.titulo as decision_titulo
+      FROM notificaciones_procesales np
+      LEFT JOIN causas c ON np.causa_id = c.causa_id
+      LEFT JOIN decisiones_judiciales d ON np.decision_id = d.decision_id
+      WHERE np.causa_id = $1
     `;
     const params: unknown[] = [causaId];
     let paramIndex = 2;
 
     if (filtros?.estado) {
-      query += ` AND estado = $${paramIndex}`;
+      query += ` AND np.estado = $${paramIndex}`;
       params.push(filtros.estado);
       paramIndex++;
     }
 
     if (filtros?.destinatarioTipo) {
-      query += ` AND destinatario_tipo = $${paramIndex}`;
+      query += ` AND np.destinatario_tipo = $${paramIndex}`;
       params.push(filtros.destinatarioTipo);
     }
 
-    query += ` ORDER BY fecha_creacion DESC`;
+    query += ` ORDER BY np.fecha_creacion DESC`;
 
     const result = await casesPool.query(query, params);
-    return result.rows.map((row) => this.mapearNotificacion(row));
+    const notificaciones = result.rows.map((row) => this.mapearNotificacionCompleta(row));
+
+    // Auditoría de consulta (si se proporciona usuario)
+    if (usuario && ipOrigen) {
+      await auditService.log({
+        tipoEvento: "CONSULTA_NOTIFICACIONES",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: `Consulta de notificaciones de causa ${causaId}`,
+        datosAfectados: {
+          causaId,
+          filtros,
+          cantidadResultados: notificaciones.length,
+        },
+        ipOrigen,
+        userAgent: "sistema",
+      });
+    }
+
+    return notificaciones;
   }
 
   /**
    * Listar notificaciones de una decisión
+   * Registra auditoría de consulta
    */
   async listarNotificacionesPorDecision(
-    decisionId: number
+    decisionId: number,
+    usuario?: TokenPayload,
+    ipOrigen?: string
   ): Promise<NotificacionProcesal[]> {
     const query = `
       SELECT * FROM notificaciones_procesales 
@@ -391,13 +447,36 @@ class NotificacionesProcesalesService {
     `;
 
     const result = await casesPool.query(query, [decisionId]);
-    return result.rows.map((row) => this.mapearNotificacion(row));
+    const notificaciones = result.rows.map((row) => this.mapearNotificacion(row));
+
+    // Auditoría de consulta (si se proporciona usuario)
+    if (usuario && ipOrigen) {
+      await auditService.log({
+        tipoEvento: "CONSULTA_NOTIFICACIONES",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: `Consulta de notificaciones de decisión ${decisionId}`,
+        datosAfectados: {
+          decisionId,
+          cantidadResultados: notificaciones.length,
+        },
+        ipOrigen,
+        userAgent: "sistema",
+      });
+    }
+
+    return notificaciones;
   }
 
   /**
    * Listar notificaciones pendientes (para proceso de envío)
+   * Registra auditoría de consulta
    */
-  async listarNotificacionesPendientes(): Promise<NotificacionProcesal[]> {
+  async listarNotificacionesPendientes(
+    usuario?: TokenPayload,
+    ipOrigen?: string
+  ): Promise<NotificacionProcesal[]> {
     const query = `
       SELECT * FROM notificaciones_procesales 
       WHERE estado = 'PENDIENTE'
@@ -405,13 +484,36 @@ class NotificacionesProcesalesService {
     `;
 
     const result = await casesPool.query(query);
-    return result.rows.map((row) => this.mapearNotificacion(row));
+    const notificaciones = result.rows.map((row) => this.mapearNotificacion(row));
+
+    // Auditoría de consulta (si se proporciona usuario)
+    if (usuario && ipOrigen) {
+      await auditService.log({
+        tipoEvento: "CONSULTA_NOTIFICACIONES",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: `Consulta de notificaciones pendientes`,
+        datosAfectados: {
+          cantidadResultados: notificaciones.length,
+        },
+        ipOrigen,
+        userAgent: "sistema",
+      });
+    }
+
+    return notificaciones;
   }
 
   /**
    * Obtener estadísticas de notificaciones por causa
+   * Registra auditoría de consulta
    */
-  async obtenerEstadisticasPorCausa(causaId: number): Promise<{
+  async obtenerEstadisticasPorCausa(
+    causaId: number,
+    usuario?: TokenPayload,
+    ipOrigen?: string
+  ): Promise<{
     total: number;
     pendientes: number;
     enviadas: number;
@@ -432,13 +534,32 @@ class NotificacionesProcesalesService {
     const result = await casesPool.query(query, [causaId]);
     const row = result.rows[0];
 
-    return {
+    const estadisticas = {
       total: parseInt(row.total) || 0,
       pendientes: parseInt(row.pendientes) || 0,
       enviadas: parseInt(row.enviadas) || 0,
       entregadas: parseInt(row.entregadas) || 0,
       fallidas: parseInt(row.fallidas) || 0,
     };
+
+    // Auditoría de consulta (si se proporciona usuario)
+    if (usuario && ipOrigen) {
+      await auditService.log({
+        tipoEvento: "CONSULTA_ESTADISTICAS",
+        usuarioId: usuario.funcionarioId,
+        usuarioCorreo: usuario.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: `Consulta de estadísticas de notificaciones de causa ${causaId}`,
+        datosAfectados: {
+          causaId,
+          estadisticas,
+        },
+        ipOrigen,
+        userAgent: "sistema",
+      });
+    }
+
+    return estadisticas;
   }
 
   // ============================================================================
@@ -470,6 +591,15 @@ class NotificacionesProcesalesService {
       creadoPorId: row.creado_por_id as number,
       enviadoPorId: row.enviado_por_id as number | undefined,
       ipOrigen: row.ip_origen as string | undefined,
+    };
+  }
+
+  private mapearNotificacionCompleta(row: Record<string, unknown>): NotificacionProcesal & { numeroProceso?: string; tipoDecision?: string; decisionTitulo?: string } {
+    return {
+      ...this.mapearNotificacion(row),
+      numeroProceso: row.numero_proceso as string | undefined,
+      tipoDecision: row.tipo_decision as string | undefined,
+      decisionTitulo: row.decision_titulo as string | undefined,
     };
   }
 }

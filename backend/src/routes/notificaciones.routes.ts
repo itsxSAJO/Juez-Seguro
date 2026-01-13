@@ -47,6 +47,18 @@ router.get(
 
       const resultado = await notificacionesService.getNotificaciones(filtros);
 
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_NOTIFICACIONES",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: `Consulta de notificaciones${filtros.causaId ? ` de causa ${filtros.causaId}` : ''}`,
+        datosAfectados: { ...filtros, cantidadResultados: resultado.total },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       res.json({
         success: true,
         data: resultado.notificaciones,
@@ -70,6 +82,18 @@ router.get(
     try {
       const notificaciones = await notificacionesService.getNotificacionesPendientes();
 
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_NOTIFICACIONES_PENDIENTES",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: "Consulta de notificaciones pendientes",
+        datosAfectados: { cantidadResultados: notificaciones.length },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       res.json({
         success: true,
         data: notificaciones,
@@ -91,6 +115,18 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stats = await notificacionesService.getEstadisticas();
+
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_ESTADISTICAS_NOTIFICACIONES",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "NOTIFICACIONES",
+        descripcion: "Consulta de estadísticas de notificaciones",
+        datosAfectados: {},
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.json({
         success: true,
@@ -316,6 +352,18 @@ router.get(
 
       const resultado = await notificacionesService.getMisNotificaciones(filtros);
 
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_NOTIFICACIONES_INTERNAS",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "NOTIFICACIONES_INTERNAS",
+        descripcion: "Consulta de mis notificaciones internas",
+        datosAfectados: { cantidadResultados: resultado.total, noLeidas: resultado.noLeidas },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       res.json({
         success: true,
         data: resultado.notificaciones,
@@ -339,6 +387,18 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const noLeidas = await notificacionesService.getConteoNoLeidas(req.user!.funcionarioId);
+
+      // Auditoría de consulta (mínima, es un conteo frecuente)
+      await auditService.log({
+        tipoEvento: "CONSULTA_CONTEO_NOTIFICACIONES",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "NOTIFICACIONES_INTERNAS",
+        descripcion: "Consulta de conteo de notificaciones no leídas",
+        datosAfectados: { noLeidas },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.json({
         success: true,

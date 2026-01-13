@@ -306,10 +306,12 @@ class DecisionesService {
 
   /**
    * Obtiene una decisión por ID
+   * Registra auditoría de visualización
    */
   async getDecisionById(
     decisionId: number,
-    usuario: ContextoUsuario
+    usuario: ContextoUsuario,
+    ipOrigen?: string
   ): Promise<DecisionJudicial | null> {
     const client = await casesPool.connect();
     try {
@@ -333,6 +335,25 @@ class DecisionesService {
         decision.contenidoBorrador = undefined;
       }
 
+      // Auditoría de visualización (si se proporciona ipOrigen)
+      if (ipOrigen) {
+        await auditService.log({
+          tipoEvento: "VISUALIZACION_DECISION",
+          usuarioId: usuario.funcionarioId,
+          usuarioCorreo: usuario.correo,
+          moduloAfectado: "CASOS",
+          descripcion: `Visualización de decisión ${decisionId}`,
+          datosAfectados: {
+            decisionId,
+            causaId: decision.causaId,
+            tipoDecision: decision.tipoDecision,
+            estado: decision.estado,
+          },
+          ipOrigen,
+          userAgent: "sistema",
+        });
+      }
+
       return decision;
     } finally {
       client.release();
@@ -341,10 +362,12 @@ class DecisionesService {
 
   /**
    * Obtiene lista de decisiones con filtros
+   * Registra auditoría de consulta
    */
   async getDecisiones(
     filtros: FiltrosDecisiones,
-    usuario: ContextoUsuario
+    usuario: ContextoUsuario,
+    ipOrigen?: string
   ): Promise<{ decisiones: DecisionJudicialPublica[]; total: number }> {
     const client = await casesPool.connect();
     try {
@@ -407,6 +430,24 @@ class DecisionesService {
       );
 
       const decisiones = result.rows.map(row => this.mapearDecisionPublica(row));
+
+      // Auditoría de consulta (si se proporciona ipOrigen)
+      if (ipOrigen) {
+        await auditService.log({
+          tipoEvento: "CONSULTA_DECISIONES",
+          usuarioId: usuario.funcionarioId,
+          usuarioCorreo: usuario.correo,
+          moduloAfectado: "CASOS",
+          descripcion: `Consulta de decisiones`,
+          datosAfectados: {
+            filtros,
+            cantidadResultados: decisiones.length,
+            totalResultados: total,
+          },
+          ipOrigen,
+          userAgent: "sistema",
+        });
+      }
 
       return { decisiones, total };
     } finally {
@@ -1086,19 +1127,14 @@ La firma electrónica tiene la misma validez jurídica que la firma manuscrita.
         [decisionId]
       );
 
-      return result.rows.map((row, index) => ({
+      return result.rows.map((row) => ({
         historialId: row.historial_id,
         decisionId: row.decision_id,
-        version: row.version_anterior || (result.rows.length - index),
-        estadoAnterior: row.estado_anterior || 'BORRADOR',
-        estadoNuevo: row.estado_anterior === 'BORRADOR' ? 'LISTA_PARA_FIRMA' : 'FIRMADA',
-        usuarioId: row.modificado_por_id,
-        usuarioPseudonimo: row.modificado_por_pseudonimo || 'SISTEMA',
-        descripcionCambio: row.motivo_cambio || `Modificación versión ${row.version_anterior || 1}`,
-        fechaCambio: row.fecha_modificacion ? new Date(row.fecha_modificacion).toISOString() : new Date().toISOString(),
-        // Campos legacy para compatibilidad
-        versionAnterior: row.version_anterior,
+        versionAnterior: row.version_anterior || 1,
         contenidoAnterior: row.contenido_anterior,
+        estadoAnterior: row.estado_anterior || 'BORRADOR',
+        modificadoPorId: row.modificado_por_id,
+        fechaModificacion: row.fecha_modificacion ? new Date(row.fecha_modificacion) : new Date(),
         ipOrigen: row.ip_origen,
         motivoCambio: row.motivo_cambio,
       }));

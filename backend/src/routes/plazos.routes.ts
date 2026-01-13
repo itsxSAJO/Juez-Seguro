@@ -112,8 +112,14 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const causaId = parseInt(req.params.causaId);
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
 
-      const plazos = await plazosService.listarPlazosPorCausa(causaId);
+      const plazos = await plazosService.listarPlazosPorCausa(
+        causaId,
+        usuario,
+        ipOrigen
+      );
 
       res.json({
         success: true,
@@ -139,8 +145,14 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const plazoId = parseInt(req.params.id);
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
 
-      const plazo = await plazosService.obtenerPlazoPorId(plazoId);
+      const plazo = await plazosService.obtenerPlazoPorId(
+        plazoId,
+        usuario,
+        ipOrigen
+      );
 
       if (!plazo) {
         res.status(404).json({

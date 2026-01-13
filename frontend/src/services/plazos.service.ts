@@ -38,6 +38,7 @@ export interface PlazoProcesal {
   
   // Parte afectada
   parteResponsable?: TipoDestinatario;
+  parteResponsableNombre?: string; // Nombre completo del actor/demandado
   
   // Fechas
   fechaInicio: string;

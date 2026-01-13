@@ -124,6 +124,18 @@ router.get(
       const juezId = req.user?.rol === "JUEZ" ? String(req.user.funcionarioId) : undefined;
       const audiencias = await audienciasService.getAudienciasHoyConHistorial(juezId);
 
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_AUDIENCIAS_HOY",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "AUDIENCIAS",
+        descripcion: `Consulta de audiencias del día${juezId ? ` para juez ${juezId}` : ' (todas)'}`,
+        datosAfectados: { cantidadResultados: audiencias.length, juezId },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       res.json({
         success: true,
         data: audiencias,
@@ -147,6 +159,18 @@ router.get(
     try {
       const juezId = req.user?.rol === "JUEZ" ? String(req.user.funcionarioId) : undefined;
       const audiencias = await audienciasService.getAudienciasSemanaConHistorial(juezId);
+
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_AUDIENCIAS_SEMANA",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "AUDIENCIAS",
+        descripcion: `Consulta de audiencias de la semana${juezId ? ` para juez ${juezId}` : ' (todas)'}`,
+        datosAfectados: { cantidadResultados: audiencias.length, juezId },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.json({
         success: true,
@@ -190,6 +214,23 @@ router.get(
 
       const audiencias = await audienciasService.getAgendaJuez(juezId, fechaDesde, fechaHasta);
 
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_AGENDA_JUEZ",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "AUDIENCIAS",
+        descripcion: `Consulta de agenda del juez ${juezId}`,
+        datosAfectados: { 
+          cantidadResultados: audiencias.length, 
+          juezId,
+          fechaDesde: fechaDesde?.toISOString(),
+          fechaHasta: fechaHasta?.toISOString(),
+        },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       res.json({
         success: true,
         data: audiencias,
@@ -227,6 +268,18 @@ router.get(
       const diasAtras = req.query.dias ? parseInt(req.query.dias as string) : 7;
 
       const audiencias = await audienciasService.getAudienciasReprogramadasRecientes(juezId, diasAtras);
+
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_AUDIENCIAS_REPROGRAMADAS",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "AUDIENCIAS",
+        descripcion: `Consulta de audiencias reprogramadas del juez ${juezId} (últimos ${diasAtras} días)`,
+        datosAfectados: { cantidadResultados: audiencias.length, juezId, diasAtras },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.json({
         success: true,
@@ -416,6 +469,18 @@ router.get(
     try {
       const historial = await audienciasService.getHistorialReprogramaciones(req.params.id);
 
+      // Auditoría de consulta
+      await auditService.log({
+        tipoEvento: "CONSULTA_HISTORIAL_AUDIENCIA",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "AUDIENCIAS",
+        descripcion: `Consulta de historial de reprogramaciones de audiencia ${req.params.id}`,
+        datosAfectados: { audienciaId: req.params.id, cantidadCambios: historial.length },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
       res.json({
         success: true,
         data: historial,
@@ -446,6 +511,22 @@ router.get(
         });
         return;
       }
+
+      // Auditoría de visualización
+      await auditService.log({
+        tipoEvento: "VISUALIZACION_AUDIENCIA",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "AUDIENCIAS",
+        descripcion: `Visualización de audiencia ${req.params.id}`,
+        datosAfectados: { 
+          audienciaId: req.params.id, 
+          causaId: audiencia.causaId,
+          tipo: audiencia.tipo,
+        },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
 
       res.json({
         success: true,
