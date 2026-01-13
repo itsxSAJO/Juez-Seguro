@@ -324,6 +324,69 @@ class NotificacionesProcesalesService {
     return this.mapearNotificacion(result.rows[0]);
   }
 
+  /**
+   * Cambiar estado manualmente (para simular envíos)
+   */
+  async cambiarEstadoManual(
+    notificacionId: number,
+    nuevoEstado: EstadoNotificacionProcesal,
+    usuario: TokenPayload,
+    ipOrigen: string
+  ): Promise<NotificacionProcesal> {
+    // Obtener estado actual
+    const checkQuery = `SELECT estado FROM notificaciones_procesales WHERE notificacion_id = $1`;
+    const checkResult = await casesPool.query(checkQuery, [notificacionId]);
+    
+    if (checkResult.rows.length === 0) {
+      throw new Error("Notificación no encontrada");
+    }
+    
+    const estadoAnterior = checkResult.rows[0].estado;
+    
+    // Actualizar estado
+    const updateFields: string[] = ["estado = $1"];
+    const params: unknown[] = [nuevoEstado];
+    let paramIndex = 2;
+    
+    // Si cambia a ENVIADA, registrar fecha de envío
+    if (nuevoEstado === "ENVIADA") {
+      updateFields.push(`fecha_envio = NOW()`);
+    }
+    
+    // Si cambia a ENTREGADA, registrar fecha de entrega
+    if (nuevoEstado === "ENTREGADA") {
+      updateFields.push(`fecha_entrega = NOW()`);
+      updateFields.push(`evidencia_entrega = $${paramIndex}`);
+      params.push("Cambio manual de estado");
+      paramIndex++;
+    }
+    
+    params.push(notificacionId);
+    
+    const updateQuery = `
+      UPDATE notificaciones_procesales SET
+        ${updateFields.join(", ")}
+      WHERE notificacion_id = $${paramIndex}
+      RETURNING *
+    `;
+
+    const result = await casesPool.query(updateQuery, params);
+
+    // Auditoría del cambio
+    await auditService.log({
+      tipoEvento: "CAMBIO_ESTADO_NOTIFICACION",
+      usuarioId: usuario.funcionarioId,
+      usuarioCorreo: usuario.correo,
+      moduloAfectado: "NOTIFICACIONES",
+      descripcion: `Cambio manual de estado de notificación ${notificacionId}: ${estadoAnterior} → ${nuevoEstado}`,
+      datosAfectados: { notificacionId, estadoAnterior, nuevoEstado },
+      ipOrigen,
+      userAgent: "sistema",
+    });
+
+    return this.mapearNotificacion(result.rows[0]);
+  }
+
   // ============================================================================
   // CONSULTAS
   // ============================================================================

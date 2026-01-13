@@ -354,6 +354,50 @@ router.post(
 );
 
 /**
+ * PUT /api/notificaciones-procesales/:id/cambiar-estado
+ * Cambiar estado de notificación manualmente (para simular envíos)
+ */
+router.put(
+  "/:id/cambiar-estado",
+  authenticate,
+  authorize("SECRETARIO", "ADMIN_CJ"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const usuario = req.user as TokenPayload;
+      const ipOrigen = req.ip || req.socket.remoteAddress || "unknown";
+      const notificacionId = parseInt(req.params.id);
+      const { estado } = req.body;
+
+      if (!estado || !["PENDIENTE", "ENVIADA", "ENTREGADA", "FALLIDA"].includes(estado)) {
+        res.status(400).json({
+          success: false,
+          message: "Estado inválido. Debe ser: PENDIENTE, ENVIADA, ENTREGADA o FALLIDA",
+        });
+        return;
+      }
+
+      const notificacion = await notificacionesProcesalesService.cambiarEstadoManual(
+        notificacionId,
+        estado,
+        usuario,
+        ipOrigen
+      );
+
+      res.json({
+        success: true,
+        message: `Estado cambiado a ${estado}`,
+        data: notificacion,
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : "Error al cambiar estado",
+      });
+    }
+  }
+);
+
+/**
  * GET /api/notificaciones-procesales/pendientes
  * Listar notificaciones pendientes de envío
  */

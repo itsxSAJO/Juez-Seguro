@@ -127,7 +127,6 @@ const DashboardFuncionarios = () => {
           value={causasActivas}
           description="En trámite"
           icon={FileText}
-          trend={{ value: 12, label: "vs. mes anterior" }}
         />
         <StatCard
           title="Audiencias Hoy"

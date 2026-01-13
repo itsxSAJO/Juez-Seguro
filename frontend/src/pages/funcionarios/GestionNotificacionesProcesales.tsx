@@ -342,6 +342,26 @@ const GestionNotificacionesProcesales = () => {
     }
   };
 
+  // Cambiar estado manualmente (para simular envíos)
+  const handleCambiarEstado = async (notifId: number, nuevoEstado: EstadoNotificacionProcesal) => {
+    try {
+      await notificacionesProcesalesService.cambiarEstado(notifId, nuevoEstado);
+      toast({
+        title: "Estado actualizado",
+        description: `La notificación ahora está: ${nuevoEstado}`,
+      });
+      await cargarNotificacionesYPlazos();
+      setDetailModalOpen(false);
+    } catch (error) {
+      console.error("Error cambiando estado:", error);
+      toast({
+        title: "Error",
+        description: "No se pudo cambiar el estado",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Estadísticas
   const stats = useMemo(() => {
     const pendientes = notificaciones.filter(n => n.estado === "PENDIENTE").length;
@@ -1070,15 +1090,55 @@ const GestionNotificacionesProcesales = () => {
                 </div>
               )}
 
-              {esSecretario && selectedNotificacion.estado === "ENVIADA" && (
-                <div className="pt-2">
-                  <Button 
-                    className="w-full"
-                    onClick={() => handleConfirmarEntrega(selectedNotificacion.notificacionId, "Confirmación manual")}
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Confirmar Entrega
-                  </Button>
+              {/* Botones para cambiar estado manualmente (simulación) */}
+              {esSecretario && (
+                <div className="pt-4 border-t space-y-3">
+                  <p className="text-sm font-medium text-muted-foreground">Cambiar estado (simulación):</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedNotificacion.estado !== "PENDIENTE" && (
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCambiarEstado(selectedNotificacion.notificacionId, "PENDIENTE")}
+                      >
+                        <Clock className="w-4 h-4 mr-2" />
+                        Pendiente
+                      </Button>
+                    )}
+                    {selectedNotificacion.estado !== "ENVIADA" && (
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                        onClick={() => handleCambiarEstado(selectedNotificacion.notificacionId, "ENVIADA")}
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        Enviada
+                      </Button>
+                    )}
+                    {selectedNotificacion.estado !== "ENTREGADA" && (
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        className="border-green-500 text-green-600 hover:bg-green-50"
+                        onClick={() => handleCambiarEstado(selectedNotificacion.notificacionId, "ENTREGADA")}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        Entregada
+                      </Button>
+                    )}
+                    {selectedNotificacion.estado !== "FALLIDA" && (
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        className="border-red-500 text-red-600 hover:bg-red-50"
+                        onClick={() => handleCambiarEstado(selectedNotificacion.notificacionId, "FALLIDA")}
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        Fallida
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

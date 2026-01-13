@@ -221,6 +221,26 @@ export const notificacionesProcesalesService = {
   },
 
   /**
+   * Cambiar estado manualmente (para simular envíos)
+   * Solo SECRETARIO puede cambiar estado
+   */
+  async cambiarEstado(
+    id: number, 
+    nuevoEstado: EstadoNotificacionProcesal
+  ): Promise<NotificacionProcesal> {
+    const response = await api.put<ApiResponse<NotificacionProcesal>>(
+      `/notificaciones-procesales/${id}/cambiar-estado`,
+      { estado: nuevoEstado }
+    );
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    
+    throw new Error(response.message || "Error al cambiar estado");
+  },
+
+  /**
    * Obtener estadísticas de notificaciones por causa
    */
   async obtenerEstadisticas(causaId: number): Promise<{
