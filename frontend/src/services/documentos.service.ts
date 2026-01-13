@@ -73,29 +73,50 @@ export const documentosService = {
 
   /**
    * Sube un nuevo documento
+   * FORMATO: JSON con contenido en base64 (no FormData)
    */
   async subirDocumento(data: SubirDocumentoRequest): Promise<Documento> {
-    const formData = new FormData();
-    formData.append("causaId", data.causaId);
-    formData.append("nombre", data.nombre);
-    formData.append("tipo", data.tipo);
-    formData.append("archivo", data.archivo);
+    // Convertir archivo a Base64
+    const base64Content = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(data.archivo);
+      reader.onload = () => {
+        const result = reader.result?.toString().split(",")[1];
+        if (result) {
+          resolve(result);
+        } else {
+          reject(new Error("Error al leer el archivo"));
+        }
+      };
+      reader.onerror = () => reject(new Error("Error al leer el archivo"));
+    });
 
-    const token = localStorage.getItem("authToken");
-    const headers: HeadersInit = {};
+    // Usar sessionStorage con 'auth_token' (consistente con AuthContext)
+    const token = sessionStorage.getItem("auth_token");
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
+    // Payload en formato JSON con base64
+    const payload = {
+      causaId: data.causaId,
+      tipo: data.tipo,
+      nombreOriginal: data.nombre,
+      contenido: base64Content,
+    };
+
     const response = await fetch(`${API_BASE_URL}/documentos`, {
       method: "POST",
       headers,
-      body: formData,
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || "Error al subir el documento");
+      throw new Error(error.error || error.message || "Error al subir el documento");
     }
 
     const result = await response.json() as ApiResponse<Documento>;

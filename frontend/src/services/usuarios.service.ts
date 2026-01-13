@@ -155,9 +155,10 @@ export const usuariosService = {
 
   /**
    * Desbloquea una cuenta bloqueada por intentos fallidos
+   * NOTA: Backend usa POST, no PATCH
    */
   async desbloquearCuenta(id: string): Promise<Usuario> {
-    const response = await api.patch<ApiResponse<Usuario>>(`/usuarios/${id}/desbloquear`);
+    const response = await api.post<ApiResponse<Usuario>>(`/usuarios/${id}/desbloquear`);
     
     if (response.success && response.data) {
       return response.data;

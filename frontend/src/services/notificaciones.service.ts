@@ -73,9 +73,10 @@ export const notificacionesService = {
 
   /**
    * Reenvía una notificación
+   * NOTA: Backend usa PATCH, no POST
    */
   async reenviarNotificacion(id: string): Promise<Notificacion> {
-    const response = await api.post<ApiResponse<Notificacion>>(`/notificaciones/${id}/reenviar`);
+    const response = await api.patch<ApiResponse<Notificacion>>(`/notificaciones/${id}/reenviar`, {});
     
     if (response.success && response.data) {
       return response.data;

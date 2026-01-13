@@ -135,7 +135,8 @@ export const auditoriaService = {
       if (filtros.fechaHasta) params.fechaHasta = filtros.fechaHasta;
     }
 
-    const token = localStorage.getItem("authToken");
+    // Usar sessionStorage con 'auth_token' (consistente con AuthContext)
+    const token = sessionStorage.getItem("auth_token");
     const headers: HeadersInit = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;

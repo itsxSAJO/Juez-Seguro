@@ -16,6 +16,7 @@ const router = Router();
 // ============================================================================
 
 // Nota: causaId es un SERIAL (entero) en la base de datos, no UUID
+// Validación estricta: solo acepta string numérico (principio de mínimo privilegio)
 const subirDocumentoSchema = z.object({
   causaId: z.string().regex(/^\d+$/, "ID de causa debe ser un número válido"),
   tipo: z.enum(["demanda", "contestacion", "prueba", "sentencia", "auto", "providencia", "otro"]),
@@ -283,7 +284,23 @@ router.post(
   authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const datos = subirDocumentoSchema.parse(req.body);
+      // Validación estricta con Zod
+      const parseResult = subirDocumentoSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        // Retornar error detallado de validación
+        res.status(400).json({
+          success: false,
+          error: "Datos de entrada inválidos",
+          details: parseResult.error.errors.map(e => ({
+            campo: e.path.join("."),
+            mensaje: e.message,
+          })),
+        });
+        return;
+      }
+      
+      const datos = parseResult.data;
 
       // VALIDACIÓN: Secretario solo puede subir documentos a causas de su unidad/materia
       if (req.user!.rol === "SECRETARIO") {
