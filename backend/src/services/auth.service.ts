@@ -146,12 +146,25 @@ class AuthService {
         requiereCambioPassword: esHabilitable, // Flag para primer login
       };
 
+      // Determinar tiempo de expiración según rol:
+      // - ADMIN_CJ: 5 minutos (mayor riesgo, acceso completo)
+      // - JUEZ/SECRETARIO: 15 minutos (operaciones normales)
+      // - Cambio de password: 5 minutos (temporal)
+      let expiresInSeconds: number;
+      if (esHabilitable) {
+        expiresInSeconds = 300; // 5 minutos para cambio de password
+      } else if (funcionario.rol_nombre === "ADMIN_CJ") {
+        expiresInSeconds = 300; // 5 minutos para admin
+      } else {
+        expiresInSeconds = 900; // 15 minutos para juez y secretario
+      }
+
       const signOptions: SignOptions = {
-        expiresIn: esHabilitable ? 300 : 1800, // 5 min para cambio de password, 30 min normal
+        expiresIn: expiresInSeconds,
       };
 
       const token = jwt.sign(payload, config.jwt.secret as Secret, signOptions);
-      const expiresAt = new Date(Date.now() + (esHabilitable ? 5 : 30) * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
       await auditService.logLogin(correo, ip, userAgent, true, funcionario.funcionario_id);
 
