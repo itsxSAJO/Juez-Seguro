@@ -26,7 +26,8 @@ const EMAIL_EDUCATIVO_HABILITADO = process.env.EMAIL_MODO_EDUCATIVO === "true";
 const CORREOS_PRUEBA = {
   JUEZ: "juez.jz15@gmail.com",
   SECRETARIA: "secretaria.juez20@gmail.com",
-  DEFAULT: "juez.jz15@gmail.com", // Fallback para otros roles
+  ADMIN: "consejo.judicatura20@gmail.com",
+  DEFAULT: "consejo.judicatura20@gmail.com", // Fallback para otros roles
 };
 
 /**
@@ -48,7 +49,7 @@ const obtenerCorreoDestino = (
     case "SECRETARIO":
       return CORREOS_PRUEBA.SECRETARIA;
     case "ADMIN":
-      return CORREOS_PRUEBA.DEFAULT;
+      return CORREOS_PRUEBA.ADMIN;
     default:
       // Si no hay rol, intentar inferir del correo
       if (correoOriginal.toLowerCase().includes("juez")) {
@@ -381,6 +382,61 @@ class EmailService {
       .replace(/<[^>]+>/g, "")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  /**
+   * Envía un código OTP para acceso a datos sensibles
+   * @param correoDestino - Correo del admin que solicita el OTP
+   * @param otp - Código OTP de 6 dígitos
+   * @param expiraEnSegundos - Tiempo de expiración en segundos
+   * @param funcionarioIdObjetivo - ID del funcionario cuyos datos se solicitan
+   */
+  async enviarOTP(
+    correoDestino: string,
+    otp: string,
+    expiraEnSegundos: number,
+    funcionarioIdObjetivo: number
+  ): Promise<boolean> {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: #1e3a5f; color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">🔐 Código de Verificación OTP</h1>
+        </div>
+        
+        <div style="padding: 30px; background-color: #f5f5f5;">
+          <p>Ha solicitado acceso a los datos del funcionario ID: <strong>${funcionarioIdObjetivo}</strong></p>
+          
+          <div style="background-color: white; border: 2px solid #1e3a5f; border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0;">
+            <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Su código de verificación es:</p>
+            <h2 style="font-size: 36px; letter-spacing: 8px; color: #1e3a5f; margin: 0; font-family: monospace;">
+              ${otp}
+            </h2>
+          </div>
+          
+          <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0; color: #856404;">
+              <strong>⚠️ IMPORTANTE:</strong> Este código expira en <strong>${expiraEnSegundos} segundos</strong>.
+            </p>
+          </div>
+          
+          <p style="color: #666; font-size: 12px;">
+            Si no solicitó este código, ignore este mensaje. El código no puede ser usado por terceros sin acceso a su cuenta.
+          </p>
+        </div>
+        
+        <div style="background-color: #1e3a5f; color: white; padding: 15px; text-align: center; font-size: 12px;">
+          <p style="margin: 0;">Sistema de Gestión Judicial - Juez Seguro</p>
+          <p style="margin: 5px 0 0 0;">Este es un mensaje automático de seguridad</p>
+        </div>
+      </div>
+    `;
+
+    return this.send({
+      to: correoDestino,
+      subject: `🔐 Código OTP - Acceso datos funcionario #${funcionarioIdObjetivo}`,
+      html,
+      rolDestinatario: "ADMIN",
+    });
   }
 }
 

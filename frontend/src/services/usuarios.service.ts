@@ -181,4 +181,55 @@ export const usuariosService = {
     
     return [];
   },
+
+  // ============================================================================
+  // ENDPOINTS PROTEGIDOS CON OTP (Datos sensibles)
+  // ============================================================================
+
+  /**
+   * Obtiene lista de usuarios con datos OFUSCADOS (protegidos)
+   * Solo muestra ID, rol y estado - datos sensibles ocultos
+   */
+  async getUsuariosProtegidos(filtros?: FiltrosUsuarios): Promise<PaginatedResponse<Usuario> & { protegido: boolean; mensaje: string }> {
+    const params: Record<string, string> = {};
+    
+    if (filtros) {
+      if (filtros.cargo) params.cargo = filtros.cargo;
+      if (filtros.estado) params.estado = filtros.estado;
+      if (filtros.page) params.page = filtros.page.toString();
+      if (filtros.pageSize) params.pageSize = filtros.pageSize.toString();
+    }
+    
+    return api.get<PaginatedResponse<Usuario> & { protegido: boolean; mensaje: string }>(
+      "/usuarios/protegidos/lista",
+      params
+    );
+  },
+
+  /**
+   * Solicita un OTP para ver datos completos de un funcionario
+   * El OTP se envía al correo del admin solicitante
+   */
+  async solicitarOTP(funcionarioId: number): Promise<{ success: boolean; message: string; expiresIn: number }> {
+    const response = await api.post<{ success: boolean; message: string; expiresIn: number }>(
+      `/usuarios/protegidos/${funcionarioId}/solicitar-otp`
+    );
+    return response;
+  },
+
+  /**
+   * Valida el OTP y obtiene datos completos del funcionario
+   */
+  async validarOTP(funcionarioId: number, otp: string): Promise<Usuario> {
+    const response = await api.post<ApiResponse<Usuario>>(
+      `/usuarios/protegidos/${funcionarioId}/validar-otp`,
+      { otp }
+    );
+    
+    if (response.success && response.data) {
+      return response.data;
+    }
+    
+    throw new Error(response.error || "OTP inválido o expirado");
+  },
 };

@@ -15,6 +15,11 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  Eye,
+  ShieldCheck,
+  Lock,
+  Mail,
+  Clock,
 } from "lucide-react";
 import { FuncionariosLayout } from "@/components/funcionarios/FuncionariosLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -129,6 +134,24 @@ const GestionCuentas = () => {
   // Estados para verificación de disponibilidad de correo
   const [emailDisponibilidad, setEmailDisponibilidad] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const [emailCheckTimeout, setEmailCheckTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  // ============================================================================
+  // ESTADOS PARA PROTECCIÓN OTP (Siempre activo - datos encriptados en BD)
+  // ============================================================================
+  const [funcionariosProtegidos, setFuncionariosProtegidos] = useState<any[]>([]);
+  const [funcionariosDesprotegidos, setFuncionariosDesprotegidos] = useState<Map<number, any>>(new Map());
+  // Temporizadores para auto-proteger datos después de 30 segundos
+  const [tiemposVisibilidad, setTiemposVisibilidad] = useState<Map<number, number>>(new Map());
+  const [isOtpDialogOpen, setIsOtpDialogOpen] = useState(false);
+  const [funcionarioOtpId, setFuncionarioOtpId] = useState<number | null>(null);
+  const [otpInput, setOtpInput] = useState("");
+  const [otpEnviando, setOtpEnviando] = useState(false);
+  const [otpValidando, setOtpValidando] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [otpMensaje, setOtpMensaje] = useState("");
+  
+  // Constante para tiempo de visibilidad de datos (30 segundos)
+  const TIEMPO_VISIBILIDAD_DATOS = 30;
 
   const form = useForm<FuncionarioFormData>({
     resolver: zodResolver(funcionarioSchema),
@@ -187,9 +210,7 @@ const GestionCuentas = () => {
     };
   }, [emailPrefixValue, editingFuncionario, verificarDisponibilidadEmail]);
 
-  useEffect(() => {
-    loadFuncionarios();
-  }, []);
+  // NOTA: La carga inicial ahora se hace en el useEffect de modoProtegido
 
   useEffect(() => {
     let filtered = funcionarios;
@@ -226,6 +247,184 @@ const GestionCuentas = () => {
       setIsLoading(false);
     }
   };
+
+  // ============================================================================
+  // FUNCIONES PARA PROTECCIÓN OTP
+  // ============================================================================
+  
+  // Cargar funcionarios en modo protegido (datos ofuscados)
+  const loadFuncionariosProtegidos = async () => {
+    setIsLoading(true);
+    try {
+      const resultado = await usuariosService.getUsuariosProtegidos();
+      setFuncionariosProtegidos(resultado.data || []);
+    } catch (error) {
+      console.error("Error loading funcionarios protegidos:", error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los funcionarios",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Solicitar OTP para ver datos de un funcionario
+  const solicitarOTP = async (funcionarioId: number) => {
+    setFuncionarioOtpId(funcionarioId);
+    setOtpEnviando(true);
+    setOtpMensaje("");
+    setOtpInput("");
+    
+    try {
+      const resultado = await usuariosService.solicitarOTP(funcionarioId);
+      
+      if (resultado.success) {
+        setOtpMensaje(resultado.message);
+        setOtpCountdown(resultado.expiresIn);
+        setIsOtpDialogOpen(true);
+        
+        // Iniciar countdown
+        const interval = setInterval(() => {
+          setOtpCountdown(prev => {
+            if (prev <= 1) {
+              clearInterval(interval);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        toast({
+          title: "Error",
+          description: resultado.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo enviar el OTP",
+        variant: "destructive",
+      });
+    } finally {
+      setOtpEnviando(false);
+    }
+  };
+  
+  // Validar OTP y obtener datos completos
+  const validarOTP = async () => {
+    if (!funcionarioOtpId || !otpInput || otpInput.length !== 6) {
+      toast({
+        title: "OTP inválido",
+        description: "Ingrese un código de 6 dígitos",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setOtpValidando(true);
+    
+    try {
+      const funcionarioCompleto = await usuariosService.validarOTP(funcionarioOtpId, otpInput);
+      const funcId = funcionarioOtpId;
+      
+      // Guardar el funcionario desprotegido
+      setFuncionariosDesprotegidos(prev => {
+        const nuevo = new Map(prev);
+        nuevo.set(funcId, funcionarioCompleto);
+        return nuevo;
+      });
+      
+      // Iniciar temporizador de visibilidad (30 segundos)
+      setTiemposVisibilidad(prev => {
+        const nuevo = new Map(prev);
+        nuevo.set(funcId, TIEMPO_VISIBILIDAD_DATOS);
+        return nuevo;
+      });
+      
+      // Iniciar countdown para auto-proteger
+      const interval = setInterval(() => {
+        setTiemposVisibilidad(prev => {
+          const nuevo = new Map(prev);
+          const tiempoActual = nuevo.get(funcId) || 0;
+          
+          if (tiempoActual <= 1) {
+            // Tiempo expirado - volver a proteger los datos
+            nuevo.delete(funcId);
+            setFuncionariosDesprotegidos(prevDesp => {
+              const nuevoDesp = new Map(prevDesp);
+              nuevoDesp.delete(funcId);
+              return nuevoDesp;
+            });
+            clearInterval(interval);
+            toast({
+              title: "Datos protegidos",
+              description: `Los datos del funcionario #${funcId} han sido protegidos automáticamente.`,
+            });
+          } else {
+            nuevo.set(funcId, tiempoActual - 1);
+          }
+          
+          return nuevo;
+        });
+      }, 1000);
+      
+      setIsOtpDialogOpen(false);
+      setOtpInput("");
+      
+      toast({
+        title: "Acceso autorizado",
+        description: `Los datos serán visibles por ${TIEMPO_VISIBILIDAD_DATOS} segundos.`,
+      });
+    } catch (error) {
+      toast({
+        title: "OTP inválido",
+        description: error instanceof Error ? error.message : "El código es incorrecto o ha expirado",
+        variant: "destructive",
+      });
+    } finally {
+      setOtpValidando(false);
+    }
+  };
+  
+  // Obtener datos de un funcionario (protegido o desprotegido)
+  const getFuncionarioData = (funcionario: any) => {
+    const funcId = funcionario.funcionario_id ?? funcionario.id;
+    // Si tenemos datos desprotegidos, usarlos
+    // NOTA: El backend devuelve datos en camelCase (nombresCompletos, correoInstitucional, etc.)
+    const desprotegido = funcionariosDesprotegidos.get(funcId);
+    if (desprotegido) {
+      return {
+        id: funcId,
+        nombre: desprotegido.nombresCompletos || desprotegido.nombres_completos || "N/A",
+        identificacion: desprotegido.identificacion || "N/A",
+        email: desprotegido.correoInstitucional || desprotegido.correo_institucional || "N/A",
+        cargo: desprotegido.rolNombre?.toLowerCase() || desprotegido.rol_nombre?.toLowerCase() || funcionario.rol_nombre?.toLowerCase() || "cj",
+        estado: (desprotegido.estado || desprotegido.estado_cuenta || funcionario.estado_cuenta || "ACTIVA").toLowerCase(),
+        unidadJudicial: desprotegido.unidadJudicial || desprotegido.unidad_judicial || funcionario.unidad_judicial || "N/A",
+        protegido: false,
+      };
+    }
+    
+    // Datos protegidos
+    return {
+      id: funcId,
+      nombre: "***PROTEGIDO***",
+      identificacion: "***PROTEGIDO***",
+      email: "***PROTEGIDO***",
+      cargo: funcionario.rol_nombre?.toLowerCase() || "cj",
+      estado: (funcionario.estado_cuenta || "ACTIVA").toLowerCase(),
+      unidadJudicial: funcionario.unidad_judicial || "N/A",
+      protegido: true,
+    };
+  };
+
+  // Cargar datos al iniciar (siempre en modo protegido)
+  useEffect(() => {
+    loadFuncionariosProtegidos();
+  }, []);
 
   const openCreateDialog = () => {
     setEditingFuncionario(null);
@@ -413,10 +612,12 @@ const GestionCuentas = () => {
             Gestione los funcionarios del sistema judicial
           </p>
         </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nuevo Funcionario
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nuevo Funcionario
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -466,7 +667,7 @@ const GestionCuentas = () => {
           <div>
             <CardTitle>Funcionarios Registrados</CardTitle>
             <CardDescription>
-              {filteredFuncionarios.length} de {funcionarios.length} funcionarios
+              {funcionariosProtegidos.length} funcionarios (datos encriptados en BD)
             </CardDescription>
           </div>
           <Button variant="outline" size="sm">
@@ -482,90 +683,88 @@ const GestionCuentas = () => {
               ))}
             </div>
           ) : (
+            // ========== TABLA CON DATOS PROTEGIDOS (Encriptados en BD) ==========
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>ID</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Identificación</TableHead>
                     <TableHead>Cargo</TableHead>
-                    <TableHead className="hidden md:table-cell">Unidad Judicial</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead className="hidden lg:table-cell">Último Acceso</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredFuncionarios.length === 0 ? (
+                  {funcionariosProtegidos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         No se encontraron funcionarios
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredFuncionarios.map((funcionario) => (
-                      <TableRow key={funcionario.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{funcionario.nombre}</p>
-                            <p className="text-xs text-muted-foreground">{funcionario.email}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {funcionario.identificacion}
-                        </TableCell>
-                        <TableCell>{getCargoBadge(funcionario.cargo)}</TableCell>
-                        <TableCell className="hidden md:table-cell max-w-[200px] truncate">
-                          {funcionario.unidadJudicial}
-                        </TableCell>
-                        <TableCell>{getEstadoBadge(funcionario.estado)}</TableCell>
-                        <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                          {funcionario.ultimoAcceso
-                            ? new Date(funcionario.ultimoAcceso).toLocaleDateString("es-EC")
-                            : "-"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="w-4 h-4" />
+                    funcionariosProtegidos.map((funcionario, index) => {
+                      const datos = getFuncionarioData(funcionario);
+                      const funcId = funcionario.funcionario_id ?? funcionario.id ?? index;
+                      return (
+                        <TableRow key={funcId}>
+                          <TableCell className="font-mono text-sm font-bold">
+                            #{funcId}
+                          </TableCell>
+                          <TableCell>
+                            {datos.protegido ? (
+                              <div className="flex items-center gap-2">
+                                <Lock className="w-4 h-4 text-amber-500" />
+                                <span className="text-amber-600 italic">Protegido</span>
+                              </div>
+                            ) : (
+                              <div>
+                                <p className="font-medium">{datos.nombre}</p>
+                                <p className="text-xs text-muted-foreground">{datos.email}</p>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {datos.protegido ? (
+                              <span className="text-amber-600 italic">***</span>
+                            ) : (
+                              datos.identificacion
+                            )}
+                          </TableCell>
+                          <TableCell>{getCargoBadge(datos.cargo as any)}</TableCell>
+                          <TableCell>{getEstadoBadge(datos.estado as any)}</TableCell>
+                          <TableCell className="text-right">
+                            {datos.protegido ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => solicitarOTP(funcId)}
+                                disabled={otpEnviando && funcionarioOtpId === funcId}
+                              >
+                                {otpEnviando && funcionarioOtpId === funcId ? (
+                                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                ) : (
+                                  <Eye className="w-4 h-4 mr-2" />
+                                )}
+                                Ver
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openEditDialog(funcionario)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {funcionario.estado !== "activa" && (
-                                <DropdownMenuItem
-                                  onClick={() => handleStatusChange(funcionario.id, "activa")}
-                                >
-                                  <UserCheck className="w-4 h-4 mr-2 text-success" />
-                                  Activar
-                                </DropdownMenuItem>
-                              )}
-                              {funcionario.estado !== "suspendida" && (
-                                <DropdownMenuItem
-                                  onClick={() => handleStatusChange(funcionario.id, "suspendida")}
-                                >
-                                  <UserMinus className="w-4 h-4 mr-2 text-warning" />
-                                  Suspender
-                                </DropdownMenuItem>
-                              )}
-                              {funcionario.estado !== "inactiva" && (
-                                <DropdownMenuItem
-                                  onClick={() => handleStatusChange(funcionario.id, "inactiva")}
-                                >
-                                  <UserX className="w-4 h-4 mr-2 text-destructive" />
-                                  Desactivar
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <Badge className="bg-green-500/10 text-green-600 border-green-500/30">
+                                  <ShieldCheck className="w-3 h-3 mr-1" />
+                                  Visible
+                                </Badge>
+                                <Badge variant="outline" className="text-amber-600 border-amber-400 animate-pulse">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  {tiemposVisibilidad.get(funcId) || 0}s
+                                </Badge>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -573,6 +772,76 @@ const GestionCuentas = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* OTP Dialog */}
+      <Dialog open={isOtpDialogOpen} onOpenChange={setIsOtpDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="w-5 h-5 text-primary" />
+              Verificación OTP
+            </DialogTitle>
+            <DialogDescription>
+              Se ha enviado un código de verificación a su correo.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {otpMensaje && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-700">{otpMensaje}</p>
+              </div>
+            )}
+            
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <Clock className="w-4 h-4 text-amber-500" />
+              <span className={otpCountdown <= 10 ? "text-red-500 font-bold" : "text-amber-600"}>
+                Expira en: {otpCountdown}s
+              </span>
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium">Código OTP (6 dígitos)</label>
+              <Input
+                type="text"
+                maxLength={6}
+                placeholder="000000"
+                value={otpInput}
+                onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="text-center text-2xl font-mono tracking-widest mt-2"
+                autoFocus
+              />
+            </div>
+            
+            {otpCountdown === 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-600">
+                  El código ha expirado. Cierre este diálogo y solicite uno nuevo.
+                </p>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsOtpDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={validarOTP} 
+              disabled={otpValidando || otpInput.length !== 6 || otpCountdown === 0}
+            >
+              {otpValidando ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Validando...
+                </>
+              ) : (
+                "Verificar OTP"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

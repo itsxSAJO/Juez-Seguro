@@ -63,6 +63,18 @@ class ApiClient {
   private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      
+      // Si es 401 (no autorizado), la sesión expiró - redirigir al login
+      if (response.status === 401) {
+        // Limpiar token expirado
+        sessionStorage.removeItem(TOKEN_KEY);
+        // Guardar mensaje para mostrar en login
+        sessionStorage.setItem("session_expired", "true");
+        // Redirigir al login
+        window.location.href = "/login";
+        throw new ApiError("Sesión expirada", 401, "SESSION_EXPIRED");
+      }
+      
       throw new ApiError(
         errorData.message || "Error en la solicitud",
         response.status,

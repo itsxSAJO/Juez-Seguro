@@ -2,6 +2,7 @@
 // JUEZ SEGURO BACKEND - Servicio de Funcionarios (FIA)
 // Gestión de cuentas con control de acceso
 // Tablas: funcionarios, roles, historial_estados
+// ENCRIPTACIÓN: Datos sensibles encriptados con AES-256-GCM
 // ============================================================================
 
 import { usersPool } from "../db/connection.js";
@@ -12,6 +13,7 @@ import { pseudonimosService } from "./pseudonimos.service.js";
 import { emailService } from "./email.service.js";
 import { pkiService } from "./pki.service.js";
 import { loggers } from "./logger.service.js";
+import { encryptionService } from "./encryption.service.js";
 import type { Funcionario, FuncionarioPublico, UserRole, EstadoCuenta, Rol } from "../types/index.js";
 
 const log = loggers.auth;
@@ -132,6 +134,13 @@ class FuncionariosService {
       const passwordTemporal = input.password || generarPasswordSeguro(12);
       const passwordHash = await bcrypt.hash(passwordTemporal, 12);
 
+      // ====================================================================
+      // ENCRIPTAR DATOS SENSIBLES antes de guardar en BD
+      // NOTA: correo_institucional NO se encripta para permitir búsqueda en login
+      // ====================================================================
+      const identificacionEncriptada = encryptionService.encrypt(input.identificacion);
+      const nombresEncriptados = encryptionService.encrypt(input.nombresCompletos);
+
       const result = await client.query(
         `INSERT INTO funcionarios (
           identificacion, nombres_completos, correo_institucional, password_hash,
@@ -139,9 +148,9 @@ class FuncionariosService {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'HABILITABLE', 0)
         RETURNING *`,
         [
-          input.identificacion,
-          input.nombresCompletos,
-          input.correoInstitucional.toLowerCase(),
+          identificacionEncriptada,
+          nombresEncriptados,
+          input.correoInstitucional.toLowerCase(), // No encriptado para búsqueda
           passwordHash,
           input.rolId,
           input.unidadJudicial,
@@ -149,7 +158,9 @@ class FuncionariosService {
         ]
       );
 
-      const funcionario = result.rows[0] as Funcionario;
+      const funcionarioRaw = result.rows[0];
+      // Desencriptar para uso interno
+      const funcionario = encryptionService.decryptFuncionarioData(funcionarioRaw) as Funcionario;
 
       // Determinar el tipo de rol para redirección de email (modo educativo)
       const tipoRol = obtenerTipoRol(input.rolId);
@@ -308,8 +319,13 @@ class FuncionariosService {
         params
       );
 
+      // Desencriptar datos sensibles antes de devolver
+      const funcionariosDesencriptados = result.rows.map((row) => 
+        encryptionService.decryptFuncionarioData(row)
+      );
+
       return {
-        funcionarios: result.rows.map((row) => this.toPublic(row)),
+        funcionarios: funcionariosDesencriptados.map((row) => this.toPublic(row)),
         total,
       };
     } finally {
@@ -336,7 +352,10 @@ class FuncionariosService {
         return null;
       }
 
-      return this.toPublic(result.rows[0]);
+      // Desencriptar datos sensibles
+      const funcionarioDesencriptado = encryptionService.decryptFuncionarioData(result.rows[0]);
+
+      return this.toPublic(funcionarioDesencriptado);
     } finally {
       client.release();
     }
@@ -370,15 +389,17 @@ class FuncionariosService {
       const params: unknown[] = [];
       let paramIndex = 1;
 
+      // ENCRIPTAR datos sensibles al actualizar
+      // NOTA: correo NO se encripta para permitir búsqueda en login
       if (input.nombresCompletos) {
         updates.push(`nombres_completos = $${paramIndex}`);
-        params.push(input.nombresCompletos);
+        params.push(encryptionService.encrypt(input.nombresCompletos));
         paramIndex++;
       }
 
       if (input.correoInstitucional) {
         updates.push(`correo_institucional = $${paramIndex}`);
-        params.push(input.correoInstitucional.toLowerCase());
+        params.push(input.correoInstitucional.toLowerCase()); // No encriptado
         paramIndex++;
       }
 

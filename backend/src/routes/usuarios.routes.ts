@@ -8,6 +8,7 @@ import { z } from "zod";
 import { funcionariosService } from "../services/usuarios.service.js";
 import { authService } from "../services/auth.service.js";
 import { auditService } from "../services/audit.service.js";
+import { otpService } from "../services/otp.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
 
 const router = Router();
@@ -198,6 +199,180 @@ router.get(
       res.json({
         success: true,
         data: resultado.funcionarios,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ============================================================================
+// GET /api/usuarios/protegidos/lista
+// Obtiene lista de funcionarios con datos OFUSCADOS (Solo ADMIN_CJ)
+// Solo muestra ID y rol, para proteger datos sensibles
+// ============================================================================
+router.get(
+  "/protegidos/lista",
+  authenticate,
+  authorize("ADMIN_CJ"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const filtros = {
+        rolId: req.query.rolId ? parseInt(req.query.rolId as string) : undefined,
+        estado: req.query.estado as any,
+        page: req.query.page ? parseInt(req.query.page as string) : undefined,
+        pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : undefined,
+      };
+
+      const resultado = await funcionariosService.getFuncionarios(filtros);
+
+      // Devolver datos ofuscados - solo ID, rol y estado
+      // NOTA: resultado.funcionarios ya viene transformado por toPublic() con campos camelCase
+      const funcionariosOfuscados = resultado.funcionarios.map((f: any) => ({
+        funcionario_id: f.funcionarioId,  // toPublic usa funcionarioId
+        rol_nombre: f.rolNombre || "N/A",
+        estado_cuenta: f.estado || "N/A",
+        unidad_judicial: f.unidadJudicial || "N/A",
+        // Datos sensibles OFUSCADOS
+        identificacion: "***PROTEGIDO***",
+        nombres_completos: "***PROTEGIDO***",
+        correo_institucional: "***PROTEGIDO***",
+      }));
+
+      // Registrar consulta en auditoría
+      await auditService.log({
+        tipoEvento: "CONSULTA_FUNCIONARIOS_OFUSCADOS",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "ADMIN",
+        descripcion: `Consulta de lista de funcionarios (datos protegidos)`,
+        datosAfectados: { 
+          filtros,
+          resultados: resultado.total 
+        },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
+      res.json({
+        success: true,
+        data: funcionariosOfuscados,
+        total: resultado.total,
+        page: filtros.page || 1,
+        pageSize: filtros.pageSize || 20,
+        protegido: true,
+        mensaje: "Datos sensibles protegidos. Solicite OTP para ver detalles.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ============================================================================
+// POST /api/usuarios/protegidos/:id/solicitar-otp
+// Solicita un OTP para ver datos completos de un funcionario
+// ============================================================================
+router.post(
+  "/protegidos/:id/solicitar-otp",
+  authenticate,
+  authorize("ADMIN_CJ"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const funcionarioId = parseInt(req.params.id);
+      if (isNaN(funcionarioId)) {
+        res.status(400).json({
+          success: false,
+          error: "ID de funcionario inválido",
+        });
+        return;
+      }
+
+      // Verificar que el funcionario existe
+      const existe = await funcionariosService.getFuncionarioById(funcionarioId);
+      if (!existe) {
+        res.status(404).json({
+          success: false,
+          error: "Funcionario no encontrado",
+        });
+        return;
+      }
+
+      const resultado = await otpService.solicitarOTP(
+        funcionarioId,
+        req.user!,
+        getClientIp(req)
+      );
+
+      res.json({
+        success: resultado.success,
+        message: resultado.message,
+        expiresIn: resultado.expiresIn,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ============================================================================
+// POST /api/usuarios/protegidos/:id/validar-otp
+// Valida OTP y devuelve datos completos del funcionario
+// ============================================================================
+router.post(
+  "/protegidos/:id/validar-otp",
+  authenticate,
+  authorize("ADMIN_CJ"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const funcionarioId = parseInt(req.params.id);
+      if (isNaN(funcionarioId)) {
+        res.status(400).json({
+          success: false,
+          error: "ID de funcionario inválido",
+        });
+        return;
+      }
+
+      const { otp } = req.body;
+      if (!otp || typeof otp !== "string") {
+        res.status(400).json({
+          success: false,
+          error: "OTP requerido",
+        });
+        return;
+      }
+
+      const esValido = await otpService.validarOTP(
+        funcionarioId,
+        otp,
+        req.user!,
+        getClientIp(req)
+      );
+
+      if (!esValido) {
+        res.status(401).json({
+          success: false,
+          error: "OTP inválido, expirado o ya utilizado",
+        });
+        return;
+      }
+
+      // OTP válido - obtener datos completos
+      const funcionario = await funcionariosService.getFuncionarioById(funcionarioId);
+
+      if (!funcionario) {
+        res.status(404).json({
+          success: false,
+          error: "Funcionario no encontrado",
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: funcionario,
+        mensaje: "Acceso autorizado con OTP. Datos desprotegidos.",
       });
     } catch (error) {
       next(error);

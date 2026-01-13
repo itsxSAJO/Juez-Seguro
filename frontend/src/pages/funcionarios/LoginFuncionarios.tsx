@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Scale, Eye, EyeOff, AlertCircle, Lock, Mail } from "lucide-react";
+import { Scale, Eye, EyeOff, AlertCircle, Lock, Mail, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,16 @@ const LoginFuncionarios = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCambiarPasswordModal, setShowCambiarPasswordModal] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // Verificar si la sesión expiró al cargar la página
+  useEffect(() => {
+    const expired = sessionStorage.getItem("session_expired");
+    if (expired === "true") {
+      setSessionExpired(true);
+      sessionStorage.removeItem("session_expired");
+    }
+  }, []);
 
   // Función para obtener la ruta del dashboard según el rol
   const getDashboardRoute = (cargo: string): string => {
@@ -100,6 +110,15 @@ const LoginFuncionarios = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {sessionExpired && (
+              <Alert className="mb-6 bg-amber-50 border-amber-200">
+                <Clock className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-700">
+                  <strong>Sesión expirada.</strong> Por favor, inicie sesión nuevamente.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             {error && (
               <Alert variant="destructive" className="mb-6">
                 <AlertCircle className="h-4 w-4" />
