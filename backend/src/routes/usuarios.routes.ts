@@ -13,25 +13,35 @@ import { authenticate, authorize, getClientIp, getUserAgent } from "../middlewar
 
 const router = Router();
 
+// Importar validadores seguros con límites
+import {
+  nombreSchema,
+  identificacionSchema,
+  emailSchema,
+  materiaSchema,
+  unidadJudicialSchema,
+  LIMITES,
+} from "../utils/validation.utils.js";
+
 // ============================================================================
-// Esquemas de validación
+// Esquemas de validación con límites de seguridad
 // ============================================================================
 
 const crearFuncionarioSchema = z.object({
-  identificacion: z.string().min(10, "Identificación debe tener al menos 10 caracteres"),
-  nombresCompletos: z.string().min(3, "Nombre debe tener al menos 3 caracteres"),
-  correoInstitucional: z.string().email("Correo inválido"),
+  identificacion: identificacionSchema,
+  nombresCompletos: nombreSchema,
+  correoInstitucional: emailSchema,
   rolId: z.number().int().positive("Rol inválido"),
-  unidadJudicial: z.string().min(1, "Unidad judicial requerida"),
-  materia: z.string().min(1, "Materia requerida"),
+  unidadJudicial: unidadJudicialSchema,
+  materia: materiaSchema,
 });
 
 const actualizarFuncionarioSchema = z.object({
-  nombresCompletos: z.string().min(3).optional(),
-  correoInstitucional: z.string().email().optional(),
+  nombresCompletos: nombreSchema.optional(),
+  correoInstitucional: emailSchema.optional(),
   rolId: z.number().int().positive().optional(),
-  unidadJudicial: z.string().optional(),
-  materia: z.string().optional(),
+  unidadJudicial: z.string().max(150, "Máximo 150 caracteres").optional(),
+  materia: z.string().max(100, "Máximo 100 caracteres").optional(),
   estado: z.enum(["HABILITABLE", "ACTIVA", "SUSPENDIDA", "INACTIVA", "BLOQUEADA"]).optional(),
 });
 

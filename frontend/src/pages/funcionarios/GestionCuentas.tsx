@@ -80,8 +80,13 @@ const rolIdMap: Record<string, number> = {
 const DOMINIO_INSTITUCIONAL = "@judicatura.gob.ec";
 
 const funcionarioSchema = z.object({
-  nombre: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
-  identificacion: z.string().length(10, "La identificación debe tener 10 dígitos"),
+  nombre: z.string()
+    .min(3, "El nombre debe tener al menos 3 caracteres")
+    .max(50, "El nombre no puede exceder 50 caracteres")
+    .regex(/^[a-zA-ZñÑáéíóúÁÉÍÓÚüÜ\s'\-]+$/, "Solo se permiten letras, espacios y guiones"),
+  identificacion: z.string()
+    .length(10, "La identificación debe tener 10 dígitos")
+    .regex(/^[0-9]+$/, "Solo se permiten números"),
   cargo: z.enum(["cj", "juez", "secretario"], {
     required_error: "Seleccione un cargo",
   }),

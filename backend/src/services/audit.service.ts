@@ -651,6 +651,45 @@ class AuditService {
       client.release();
     }
   }
+
+  /**
+   * Registra una alerta de seguridad en la tabla audit_alertas_seguridad
+   */
+  async registrarAlertaSeguridad(alerta: {
+    tipoAlerta: string;
+    severidad: "BAJA" | "MEDIA" | "ALTA" | "CRITICA";
+    titulo: string;
+    descripcion: string;
+    usuarioId?: string;
+    ipOrigen?: string;
+    accionAutomatica?: string;
+    requiereRevision?: boolean;
+  }): Promise<number> {
+    const client = await logsPool.connect();
+    
+    try {
+      const result = await client.query(
+        `INSERT INTO audit_alertas_seguridad 
+          (tipo_alerta, severidad, titulo, descripcion, usuario_id, ip_origen, accion_automatica, requiere_revision)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          alerta.tipoAlerta,
+          alerta.severidad,
+          alerta.titulo,
+          alerta.descripcion,
+          alerta.usuarioId || null,
+          alerta.ipOrigen || null,
+          alerta.accionAutomatica || null,
+          alerta.requiereRevision || false,
+        ]
+      );
+      
+      return result.rows[0].id;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 export const auditService = new AuditService();

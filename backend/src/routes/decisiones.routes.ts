@@ -31,8 +31,15 @@ const router = Router();
 // Ruta de almacenamiento de decisiones (misma que en decisiones.service.ts)
 const DECISIONES_STORAGE_PATH = process.env.SECURE_DOCS_PATH || "./secure_docs_storage";
 
+// Importar validadores seguros
+import {
+  tituloSchema,
+  contenidoDocumentoSchema,
+  LIMITES,
+} from "../utils/validation.utils.js";
+
 // ============================================================================
-// Esquemas de validación
+// Esquemas de validación con límites de seguridad
 // ============================================================================
 
 const crearDecisionSchema = z.object({
@@ -40,13 +47,13 @@ const crearDecisionSchema = z.object({
   tipoDecision: z.enum(["AUTO", "PROVIDENCIA", "SENTENCIA"], {
     errorMap: () => ({ message: "Tipo de decisión debe ser AUTO, PROVIDENCIA o SENTENCIA" }),
   }),
-  titulo: z.string().min(5, "El título debe tener al menos 5 caracteres").max(500),
-  contenidoBorrador: z.string().optional(),
+  titulo: tituloSchema,
+  contenidoBorrador: contenidoDocumentoSchema.optional(),
 });
 
 const actualizarDecisionSchema = z.object({
-  titulo: z.string().min(5).max(500).optional(),
-  contenidoBorrador: z.string().optional(),
+  titulo: tituloSchema.optional(),
+  contenidoBorrador: contenidoDocumentoSchema.optional(),
 });
 
 const filtrosSchema = z.object({

@@ -28,11 +28,13 @@ export interface Funcionario {
   fecha_actualizacion: Date;
 }
 
-// Vista pública del funcionario (sin password_hash)
+// Vista pública del funcionario (sin password_hash ni nombre real)
+// El nombre se reemplaza por pseudónimo para proteger la identidad
 export interface FuncionarioPublico {
   funcionarioId: number;
   identificacion: string;
-  nombresCompletos: string;
+  nombresCompletos: string; // Contiene el pseudónimo, NO el nombre real
+  pseudonimo: string | null; // Pseudónimo explícito (JUEZ-XXXX, SECR-XXXX, ADMIN-XXXX)
   correoInstitucional: string;
   rolId: number;
   rolNombre?: string;

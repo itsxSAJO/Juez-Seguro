@@ -13,30 +13,44 @@ import { verificarPropiedadCausa } from "../middleware/access-control.middleware
 
 const router = Router();
 
+// Importar validadores seguros con límites de caracteres
+import {
+  nombreSchema,
+  identificacionSchema,
+  materiaSchema,
+  tipoProcesoSchema,
+  unidadJudicialSchema,
+  descripcionSchema,
+  busquedaSchema,
+  idNumericoSchema,
+  LIMITES,
+  PATRONES,
+} from "../utils/validation.utils.js";
+
 // ============================================================================
-// Esquemas de validación
+// Esquemas de validación con límites de seguridad
 // ============================================================================
 
 // Esquema para crear causa con asignación automática (HU-SJ-001)
 const crearCausaAutoSchema = z.object({
-  materia: z.string().min(1, "Materia es requerida"),
-  tipoProceso: z.string().min(1, "Tipo de proceso es requerido"),
-  unidadJudicial: z.string().min(1, "Unidad judicial es requerida"),
-  descripcion: z.string().optional(),
+  materia: materiaSchema,
+  tipoProceso: tipoProcesoSchema,
+  unidadJudicial: unidadJudicialSchema,
+  descripcion: descripcionSchema.optional(),
   // Partes procesales (información pública)
-  actorNombre: z.string().optional(),
-  actorIdentificacion: z.string().optional(),
-  demandadoNombre: z.string().optional(),
-  demandadoIdentificacion: z.string().optional(),
+  actorNombre: nombreSchema.optional(),
+  actorIdentificacion: identificacionSchema.optional(),
+  demandadoNombre: nombreSchema.optional(),
+  demandadoIdentificacion: identificacionSchema.optional(),
 });
 
 // Esquema legacy (mantener compatibilidad)
 const crearCausaSchema = z.object({
-  numeroProceso: z.string().min(1, "Número de proceso requerido"),
-  materia: z.string().min(1, "Materia es requerida"),
-  tipoProceso: z.string().min(1, "Tipo de proceso es requerido"),
-  unidadJudicial: z.string().min(1, "Unidad judicial es requerida"),
-  juezAsignadoId: z.number().int().positive("ID de juez inválido"),
+  numeroProceso: z.string().min(1, "Número de proceso requerido").max(50, "Máximo 50 caracteres"),
+  materia: materiaSchema,
+  tipoProceso: tipoProcesoSchema,
+  unidadJudicial: unidadJudicialSchema,
+  juezAsignadoId: idNumericoSchema,
 });
 
 const cambiarEstadoSchema = z.object({
@@ -45,11 +59,11 @@ const cambiarEstadoSchema = z.object({
 
 const filtrosSchema = z.object({
   estadoProcesal: z.enum(["INICIADA", "EN_TRAMITE", "RESUELTA", "ARCHIVADA", "SUSPENDIDA"]).optional(),
-  materia: z.string().optional(),
-  unidadJudicial: z.string().optional(),
-  busqueda: z.string().optional(),
-  page: z.coerce.number().optional(),
-  pageSize: z.coerce.number().optional(),
+  materia: z.string().max(100).optional(),
+  unidadJudicial: z.string().max(150).optional(),
+  busqueda: busquedaSchema,
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 // ============================================================================
@@ -141,7 +155,7 @@ router.get(
         usuarioCorreo: req.user!.correo,
         moduloAfectado: "CASOS",
         descripcion: `Visualización de causa ${id}`,
-        datosAfectados: { causaId: id, numeroProceso: causa.numeroProceso },
+        datosAfectados: { causaId: id, numeroProceso: causa.numero_proceso },
         ipOrigen: getClientIp(req),
         userAgent: getUserAgent(req),
       });
@@ -197,7 +211,7 @@ router.get(
         usuarioCorreo: req.user!.correo,
         moduloAfectado: "CASOS",
         descripcion: `Visualización de expediente de causa ${id}`,
-        datosAfectados: { causaId: id, numeroProceso: expediente.causa?.numeroProceso },
+        datosAfectados: { causaId: id },
         ipOrigen: getClientIp(req),
         userAgent: getUserAgent(req),
       });

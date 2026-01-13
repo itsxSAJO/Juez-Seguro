@@ -11,8 +11,18 @@ import type { TokenPayload, TipoNotificacionProcesal, TipoDestinatario, MedioNot
 
 const router = Router();
 
+// Importar validadores seguros con límites
+import {
+  nombreSchema,
+  identificacionSchema,
+  emailSchema,
+  asuntoSchema,
+  contenidoExtensoSchema,
+  LIMITES,
+} from "../utils/validation.utils.js";
+
 // ============================================================================
-// ESQUEMAS DE VALIDACIÓN
+// ESQUEMAS DE VALIDACIÓN CON LÍMITES DE SEGURIDAD
 // ============================================================================
 
 const crearNotificacionSchema = z.object({
@@ -37,13 +47,13 @@ const crearNotificacionSchema = z.object({
     "perito",
     "testigo",
   ]),
-  destinatarioNombre: z.string().min(3).max(255),
-  destinatarioIdentificacion: z.string().optional(),
-  destinatarioCorreo: z.string().email().optional(),
-  destinatarioDireccion: z.string().optional(),
-  destinatarioCasillero: z.string().optional(),
-  asunto: z.string().min(5).max(500),
-  contenido: z.string().optional(),
+  destinatarioNombre: nombreSchema,
+  destinatarioIdentificacion: identificacionSchema.optional(),
+  destinatarioCorreo: emailSchema.optional(),
+  destinatarioDireccion: z.string().max(LIMITES.DIRECCION_MAX, `Máximo ${LIMITES.DIRECCION_MAX} caracteres`).optional(),
+  destinatarioCasillero: z.string().max(50, "Máximo 50 caracteres").optional(),
+  asunto: asuntoSchema,
+  contenido: contenidoExtensoSchema.optional(),
   medioNotificacion: z.enum([
     "BUZON_ELECTRONICO", 
     "CORREO_ELECTRONICO", 
@@ -52,15 +62,15 @@ const crearNotificacionSchema = z.object({
     "PUBLICACION", 
     "DEPRECATORIO"
   ]),
-  tipoActuacionCodigo: z.string().optional(), // Para crear plazo automático
+  tipoActuacionCodigo: z.string().max(50, "Máximo 50 caracteres").optional(), // Para crear plazo automático
 });
 
 const confirmarEntregaSchema = z.object({
-  evidencia: z.string().min(5).max(1000),
+  evidencia: z.string().min(5, "Mínimo 5 caracteres").max(1000, "Máximo 1000 caracteres"),
 });
 
 const registrarFalloSchema = z.object({
-  error: z.string().min(5).max(500),
+  error: z.string().min(5, "Mínimo 5 caracteres").max(500, "Máximo 500 caracteres"),
 });
 
 // ============================================================================

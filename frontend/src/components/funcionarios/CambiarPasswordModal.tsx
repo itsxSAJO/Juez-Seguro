@@ -30,15 +30,20 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Esquema de validación para cambio de contraseña
 const cambiarPasswordSchema = z.object({
-  passwordActual: z.string().min(1, "Ingrese su contraseña temporal"),
+  passwordActual: z.string()
+    .min(1, "Ingrese su contraseña temporal")
+    .max(128, "Máximo 128 caracteres"),
   passwordNueva: z
     .string()
     .min(8, "Mínimo 8 caracteres")
+    .max(128, "Máximo 128 caracteres")
     .regex(/[A-Z]/, "Debe incluir al menos una mayúscula")
     .regex(/[a-z]/, "Debe incluir al menos una minúscula")
     .regex(/[0-9]/, "Debe incluir al menos un número")
     .regex(/[^A-Za-z0-9]/, "Debe incluir al menos un caracter especial"),
-  confirmarPassword: z.string().min(1, "Confirme su nueva contraseña"),
+  confirmarPassword: z.string()
+    .min(1, "Confirme su nueva contraseña")
+    .max(128, "Máximo 128 caracteres"),
 }).refine((data) => data.passwordNueva === data.confirmarPassword, {
   message: "Las contraseñas no coinciden",
   path: ["confirmarPassword"],

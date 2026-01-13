@@ -35,6 +35,9 @@ import { alertasService } from "./services/alertas.service.js";
 // Importar interceptor de auditoría transversal (Sprint 3)
 import { injectAuditInterceptor, auditInterceptor } from "./middleware/audit-interceptor.middleware.js";
 
+// Importar middleware de sanitización contra SQL Injection y XSS
+import { sanitizationMiddleware } from "./middleware/sanitization.middleware.js";
+
 // ============================================================================
 // Crear aplicación Express
 // ============================================================================
@@ -99,6 +102,16 @@ app.use("/api/auth/login", authLimiter);
 // Body parsers
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// ============================================================================
+// Middleware de Sanitización (Protección SQL Injection y XSS)
+// ============================================================================
+app.use(sanitizationMiddleware({
+  blockSQLInjection: true,  // Bloquea y registra intentos de SQL Injection
+  blockXSS: false,          // Sanitiza XSS pero no bloquea (permite HTML en contenido legal)
+  logAttacks: true,         // Registra todos los intentos en audit_alertas_seguridad
+  excludePaths: ["/api/health"], // Excluir health check
+}));
 
 // Inyectar interceptor de auditoría en todas las requests
 app.use(injectAuditInterceptor);

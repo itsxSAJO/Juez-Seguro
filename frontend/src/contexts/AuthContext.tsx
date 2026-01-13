@@ -23,7 +23,8 @@ const roleMapping: Record<UserRole, UIRole> = {
 
 export interface User {
   id: number;
-  nombre: string;
+  nombre: string; // Contiene el pseudónimo, NO el nombre real
+  pseudonimo: string | null; // Pseudónimo explícito (JUEZ-XXXX, SECR-XXXX, etc.)
   identificacion: string;
   cargo: UIRole;
   rol: UserRole;
@@ -49,8 +50,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // API Base URL
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
-// Clave para sessionStorage (más seguro que localStorage para tokens)
+// Claves para sessionStorage (más seguro que localStorage para tokens)
 const TOKEN_KEY = "auth_token";
+const PSEUDONIMO_KEY = "user_pseudonimo";
 
 /**
  * Decodifica un JWT para extraer el payload (sin verificar firma)
@@ -93,6 +95,7 @@ function getUserFromToken(token: string): User | null {
   return {
     id: payload.funcionarioId,
     nombre: "", // Se obtiene del backend en login, no guardamos en storage
+    pseudonimo: null, // Se obtiene del backend en login
     identificacion: payload.identificacion,
     cargo: roleMapping[payload.rol as UserRole] || "secretario",
     rol: payload.rol,
@@ -115,12 +118,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Usar sessionStorage en lugar de localStorage (se limpia al cerrar navegador)
       const storedToken = sessionStorage.getItem(TOKEN_KEY);
       const storedRequiereCambio = sessionStorage.getItem("requiereCambioPassword") === "true";
+      const storedPseudonimo = sessionStorage.getItem(PSEUDONIMO_KEY);
 
       if (storedToken) {
         // Verificar si el token no ha expirado
         if (!isTokenExpired(storedToken)) {
           const userFromToken = getUserFromToken(storedToken);
           if (userFromToken) {
+            // Restaurar pseudónimo guardado
+            userFromToken.pseudonimo = storedPseudonimo;
+            userFromToken.nombre = storedPseudonimo || userFromToken.nombre;
             setToken(storedToken);
             setUser(userFromToken);
             setRequiereCambioPassword(storedRequiereCambio);
@@ -128,11 +135,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             // Token inválido
             sessionStorage.removeItem(TOKEN_KEY);
             sessionStorage.removeItem("requiereCambioPassword");
+            sessionStorage.removeItem(PSEUDONIMO_KEY);
           }
         } else {
           // Token expirado, limpiar
           sessionStorage.removeItem(TOKEN_KEY);
           sessionStorage.removeItem("requiereCambioPassword");
+          sessionStorage.removeItem(PSEUDONIMO_KEY);
         }
       }
 
@@ -191,7 +200,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Construir datos del usuario desde la respuesta (para uso inmediato)
       const userData: User = {
         id: data.data.user.funcionarioId,
-        nombre: data.data.user.nombresCompletos,
+        nombre: data.data.user.pseudonimo || data.data.user.nombresCompletos, // Usar pseudónimo
+        pseudonimo: data.data.user.pseudonimo || null,
         identificacion: data.data.user.identificacion,
         cargo: roleMapping[data.data.user.rolNombre as UserRole],
         rol: data.data.user.rolNombre,
@@ -205,8 +215,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setToken(receivedToken);
       setRequiereCambioPassword(requiereCambio);
       
-      // Solo guardar el token en sessionStorage (no datos del usuario)
+      // Guardar token y pseudónimo en sessionStorage
       sessionStorage.setItem(TOKEN_KEY, receivedToken);
+      if (userData.pseudonimo) {
+        sessionStorage.setItem(PSEUDONIMO_KEY, userData.pseudonimo);
+      }
       
       // Si requiere cambio de password, guardarlo también
       if (requiereCambio) {
@@ -229,6 +242,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setRequiereCambioPassword(false);
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem("requiereCambioPassword");
+    sessionStorage.removeItem(PSEUDONIMO_KEY);
     // Limpiar también localStorage por si quedaron datos antiguos
     localStorage.removeItem("token");
     localStorage.removeItem("user");

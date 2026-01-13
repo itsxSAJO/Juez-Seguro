@@ -6,7 +6,6 @@ import {
   Calendar,
   Gavel,
   Bell,
-  ClipboardList,
   Settings,
   LogOut,
   Scale,
@@ -17,7 +16,8 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { notificacionesService } from "@/services/notificaciones.service";
 
 // ============================================================================
 // PERMISOS POR ROL - COMMON CRITERIA
@@ -32,11 +32,10 @@ import { useState } from "react";
 //   - Revisión de expedientes
 //   - Emisión de decisiones (sentencias, autos, providencias)
 //   - Agenda de audiencias
-//   - Gestión documental (lectura)
+//   - Notificaciones judiciales
 //
 // SECRETARIO:
 //   - Ingreso de nuevas causas
-//   - Gestión documental (CRUD)
 //   - Programación de audiencias
 //   - Gestión de notificaciones
 //
@@ -103,7 +102,6 @@ const navItems: NavItem[] = [
     label: "Notificaciones", 
     href: "/funcionarios/notificaciones",
     roles: ["juez", "secretario"],
-    badge: 3,
     description: "Gestión de notificaciones judiciales"
   },
   { 
@@ -136,13 +134,6 @@ const navItems: NavItem[] = [
     roles: ["juez", "secretario"],
     description: "Programación de audiencias"
   },
-  { 
-    icon: ClipboardList, 
-    label: "Gestión Documental", 
-    href: "/funcionarios/documentos",
-    roles: ["juez", "secretario"],
-    description: "Documentos del expediente"
-  },
 ];
 
 export const FuncionariosSidebar = () => {
@@ -150,6 +141,26 @@ export const FuncionariosSidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+  const [notificacionesNoLeidas, setNotificacionesNoLeidas] = useState(0);
+
+  // Cargar conteo de notificaciones no leídas
+  useEffect(() => {
+    const cargarNotificaciones = async () => {
+      try {
+        const resultado = await notificacionesService.getMisNotificaciones({ estado: "no_leida" });
+        setNotificacionesNoLeidas(resultado.noLeidas || 0);
+      } catch (error) {
+        console.error("Error al cargar notificaciones:", error);
+      }
+    };
+
+    if (user) {
+      cargarNotificaciones();
+      // Actualizar cada 30 segundos
+      const intervalo = setInterval(cargarNotificaciones, 30000);
+      return () => clearInterval(intervalo);
+    }
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -204,10 +215,14 @@ export const FuncionariosSidebar = () => {
         <div className="p-4 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-sidebar-accent flex items-center justify-center text-sm font-semibold">
-              {user.nombre.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+              {/* Mostrar iniciales del pseudónimo: JU para JUEZ, SE para SECRETARIO, AD para ADMIN */}
+              {user.pseudonimo?.startsWith("JUEZ") ? "JU" :
+               user.pseudonimo?.startsWith("SECRETARIO") ? "SE" :
+               user.pseudonimo?.startsWith("ADMIN") ? "AD" :
+               user.cargo.toUpperCase().slice(0, 2)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user.nombre}</p>
+              <p className="text-sm font-medium truncate">{user.pseudonimo || user.nombre}</p>
               <p className="text-xs text-sidebar-foreground/70 capitalize">{user.cargo}</p>
             </div>
           </div>
@@ -216,36 +231,41 @@ export const FuncionariosSidebar = () => {
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {filteredNavItems.map((item) => (
-          <Link
-            key={item.href}
-            to={item.href}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors relative",
-              isActive(item.href)
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-            )}
-            title={collapsed ? item.label : undefined}
-          >
-            <item.icon className="w-5 h-5 shrink-0" />
-            {!collapsed && (
-              <>
-                <span className="text-sm font-medium truncate">{item.label}</span>
-                {item.badge && (
-                  <span className="ml-auto bg-warning text-warning-foreground text-xs font-bold px-2 py-0.5 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-              </>
-            )}
-            {collapsed && item.badge && (
-              <span className="absolute -top-1 -right-1 bg-warning text-warning-foreground text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                {item.badge}
-              </span>
-            )}
-          </Link>
-        ))}
+        {filteredNavItems.map((item) => {
+          // Determinar si este item debe mostrar badge de notificaciones
+          const badgeCount = item.href === "/funcionarios/notificaciones" ? notificacionesNoLeidas : item.badge;
+          
+          return (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors relative",
+                isActive(item.href)
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+              )}
+              title={collapsed ? item.label : undefined}
+            >
+              <item.icon className="w-5 h-5 shrink-0" />
+              {!collapsed && (
+                <>
+                  <span className="text-sm font-medium truncate">{item.label}</span>
+                  {badgeCount > 0 && (
+                    <span className="ml-auto bg-warning text-warning-foreground text-xs font-bold px-2 py-0.5 rounded-full">
+                      {badgeCount > 99 ? "99+" : badgeCount}
+                    </span>
+                  )}
+                </>
+              )}
+              {collapsed && badgeCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-warning text-warning-foreground text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  {badgeCount > 9 ? "9+" : badgeCount}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Footer */}

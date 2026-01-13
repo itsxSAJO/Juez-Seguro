@@ -13,8 +13,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import CambiarPasswordModal from "@/components/funcionarios/CambiarPasswordModal";
 
 const loginSchema = z.object({
-  email: z.string().email("Ingrese un correo electrónico válido"),
-  password: z.string().min(1, "Ingrese su contraseña"),
+  email: z.string()
+    .email("Ingrese un correo electrónico válido")
+    .max(100, "Máximo 100 caracteres"),
+  password: z.string()
+    .min(1, "Ingrese su contraseña")
+    .max(128, "Máximo 128 caracteres"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;

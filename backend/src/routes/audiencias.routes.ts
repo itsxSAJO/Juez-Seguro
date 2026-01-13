@@ -19,23 +19,32 @@ const router = Router();
 // Esquemas de validación
 // ============================================================================
 
+// Importar validadores seguros
+import {
+  salaSchema,
+  motivoSchema,
+  textoOpcionalLargoSchema,
+  LIMITES,
+  PATRONES,
+} from "../utils/validation.utils.js";
+
 const crearAudienciaSchema = z.object({
   causaId: z.union([
-    z.string().regex(/^\d+$/, "ID de causa debe ser numérico"),
+    z.string().regex(/^\d+$/, "ID de causa debe ser numérico").max(20),
     z.number().int().positive()
   ]).transform(val => String(val)),
   tipo: z.enum(["preliminar", "juicio", "conciliacion", "sentencia", "otra", "inicial", "evaluacion", "resolucion"]),
   fechaHora: z.string().datetime(),
-  sala: z.string().min(1, "Sala es requerida"),
+  sala: salaSchema,
   duracionMinutos: z.number().min(15).max(480).optional(),
   modalidad: z.enum(["presencial", "virtual"]),
-  enlaceVirtual: z.string().url().optional().transform(v => v ?? undefined),
-  observaciones: z.string().optional(),
+  enlaceVirtual: z.string().url().max(500).optional().transform(v => v ?? undefined),
+  observaciones: z.string().max(LIMITES.DESCRIPCION_MAX, `Máximo ${LIMITES.DESCRIPCION_MAX} caracteres`).optional(),
 });
 
 const reprogramarSchema = z.object({
   nuevaFecha: z.string().datetime(),
-  motivo: z.string().min(10, "Motivo debe tener al menos 10 caracteres"),
+  motivo: motivoSchema,
 });
 
 // ============================================================================

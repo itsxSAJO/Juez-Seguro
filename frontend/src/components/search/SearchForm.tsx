@@ -7,6 +7,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
+// Constantes de límites
+const LIMITES = {
+  NOMBRE_MAX: 50,
+  NUMERO_PROCESO_MAX: 25,
+  BUSQUEDA_MIN: 3,
+};
+
+// Patrones de validación
+const PATRON_BUSQUEDA = /^[a-zA-Z0-9ñÑáéíóúÁÉÍÓÚüÜ\s.\-]+$/;
+const PATRON_NUMERO_PROCESO = /^[0-9]{5}-[0-9]{4}-[0-9]{5}[A-Z]?$/;
+
 export interface SearchFormData {
   searchType: "actor" | "demandado" | "proceso";
   query: string;
@@ -22,8 +33,11 @@ export const SearchForm = ({ onSearch, isLoading = false }: SearchFormProps) => 
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const getMaxLength = () => {
+    return searchType === "proceso" ? LIMITES.NUMERO_PROCESO_MAX : LIMITES.NOMBRE_MAX;
+  };
+
   const validateQuery = (value: string): boolean => {
-    // Remove special characters except allowed ones (. and -)
     const cleanValue = value.trim();
     
     if (!cleanValue) {
@@ -31,16 +45,31 @@ export const SearchForm = ({ onSearch, isLoading = false }: SearchFormProps) => 
       return false;
     }
 
-    if (cleanValue.length < 3) {
-      setError("El término de búsqueda debe tener al menos 3 caracteres.");
+    if (cleanValue.length < LIMITES.BUSQUEDA_MIN) {
+      setError(`El término de búsqueda debe tener al menos ${LIMITES.BUSQUEDA_MIN} caracteres.`);
       return false;
     }
 
-    // Check for forbidden special characters
-    const forbiddenChars = /[@#$%^&*()+=\[\]{}|\\<>~`"']/;
-    if (forbiddenChars.test(cleanValue)) {
-      setError("No se permiten caracteres especiales (@,/,#, etc.), excepto (., -)");
-      return false;
+    if (searchType === "proceso") {
+      // Validar formato de número de proceso
+      if (cleanValue.length > LIMITES.NUMERO_PROCESO_MAX) {
+        setError(`Máximo ${LIMITES.NUMERO_PROCESO_MAX} caracteres.`);
+        return false;
+      }
+      if (!PATRON_NUMERO_PROCESO.test(cleanValue)) {
+        setError("Formato inválido. Ejemplo: 17203-2024-00001");
+        return false;
+      }
+    } else {
+      // Validar búsqueda por nombre/identificación
+      if (cleanValue.length > LIMITES.NOMBRE_MAX) {
+        setError(`El nombre no puede exceder ${LIMITES.NOMBRE_MAX} caracteres.`);
+        return false;
+      }
+      if (!PATRON_BUSQUEDA.test(cleanValue)) {
+        setError("No se permiten caracteres especiales (@, /, #, etc.)");
+        return false;
+      }
     }
 
     setError(null);
@@ -141,6 +170,7 @@ export const SearchForm = ({ onSearch, isLoading = false }: SearchFormProps) => 
                       value={query}
                       onChange={(e) => handleQueryChange(e.target.value)}
                       placeholder={getPlaceholder()}
+                      maxLength={getMaxLength()}
                       className={cn(
                         "pl-12 pr-4 h-14 text-base input-focus-ring",
                         error && "border-destructive focus:ring-destructive/30"

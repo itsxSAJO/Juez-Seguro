@@ -10,16 +10,25 @@ import { authenticate, authorize, getClientIp, getUserAgent } from "../middlewar
 
 const router = Router();
 
+// Importar validadores seguros con límites
+import {
+  nombreSchema,
+  asuntoSchema,
+  contenidoExtensoSchema,
+  uuidSchema,
+  LIMITES,
+} from "../utils/validation.utils.js";
+
 // ============================================================================
-// Esquemas de validación
+// Esquemas de validación con límites de seguridad
 // ============================================================================
 
 const crearNotificacionSchema = z.object({
-  causaId: z.string().uuid("ID de causa inválido"),
+  causaId: uuidSchema,
   tipo: z.enum(["citacion", "notificacion", "providencia", "sentencia", "otro"]),
-  destinatario: z.string().min(1, "Destinatario es requerido"),
-  asunto: z.string().min(1, "Asunto es requerido"),
-  mensaje: z.string().min(10, "Mensaje debe tener al menos 10 caracteres"),
+  destinatario: nombreSchema,
+  asunto: asuntoSchema,
+  mensaje: contenidoExtensoSchema,
   prioridad: z.enum(["alta", "normal", "baja"]).optional(),
 });
 
@@ -357,7 +366,7 @@ router.get(
         tipoEvento: "CONSULTA_NOTIFICACIONES_INTERNAS",
         usuarioId: req.user!.funcionarioId,
         usuarioCorreo: req.user!.correo,
-        moduloAfectado: "NOTIFICACIONES_INTERNAS",
+        moduloAfectado: "NOTIFICACIONES",
         descripcion: "Consulta de mis notificaciones internas",
         datosAfectados: { cantidadResultados: resultado.total, noLeidas: resultado.noLeidas },
         ipOrigen: getClientIp(req),
@@ -393,7 +402,7 @@ router.get(
         tipoEvento: "CONSULTA_CONTEO_NOTIFICACIONES",
         usuarioId: req.user!.funcionarioId,
         usuarioCorreo: req.user!.correo,
-        moduloAfectado: "NOTIFICACIONES_INTERNAS",
+        moduloAfectado: "NOTIFICACIONES",
         descripcion: "Consulta de conteo de notificaciones no leídas",
         datosAfectados: { noLeidas },
         ipOrigen: getClientIp(req),

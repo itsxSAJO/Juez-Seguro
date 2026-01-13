@@ -43,12 +43,24 @@ const causaSchema = z.object({
   materia: z.string().min(1, "Seleccione una materia"),
   tipoAccion: z.string().min(1, "Seleccione un tipo de acción"),
   unidadJudicial: z.string().min(1, "Seleccione una unidad judicial"),
-  actorNombre: z.string().min(3, "Ingrese el nombre del actor"),
-  actorIdentificacion: z.string().min(10, "Ingrese una identificación válida"),
-  demandadoNombre: z.string().min(3, "Ingrese el nombre del demandado"),
-  demandadoIdentificacion: z.string().min(10, "Ingrese una identificación válida"),
-  descripcion: z.string().min(20, "La descripción debe tener al menos 20 caracteres"),
-  cuantia: z.string().optional(),
+  actorNombre: z.string()
+    .min(3, "Ingrese el nombre del actor (mínimo 3 caracteres)")
+    .max(50, "El nombre no puede exceder 50 caracteres")
+    .regex(/^[a-zA-ZñÑáéíóúÁÉÍÓÚüÜ\s'\-]+$/, "Solo se permiten letras, espacios y guiones"),
+  actorIdentificacion: z.string()
+    .length(10, "La cédula debe tener exactamente 10 dígitos")
+    .regex(/^[0-9]+$/, "Solo se permiten números"),
+  demandadoNombre: z.string()
+    .min(3, "Ingrese el nombre del demandado (mínimo 3 caracteres)")
+    .max(50, "El nombre no puede exceder 50 caracteres")
+    .regex(/^[a-zA-ZñÑáéíóúÁÉÍÓÚüÜ\s'\-]+$/, "Solo se permiten letras, espacios y guiones"),
+  demandadoIdentificacion: z.string()
+    .length(10, "La cédula debe tener exactamente 10 dígitos")
+    .regex(/^[0-9]+$/, "Solo se permiten números"),
+  descripcion: z.string()
+    .min(20, "La descripción debe tener al menos 20 caracteres")
+    .max(2000, "La descripción no puede exceder 2000 caracteres"),
+  cuantia: z.string().max(20, "Máximo 20 caracteres").optional(),
 });
 
 type CausaFormData = z.infer<typeof causaSchema>;
@@ -430,7 +442,11 @@ const NuevaCausa = () => {
                           <FormItem>
                             <FormLabel>Nombre Completo</FormLabel>
                             <FormControl>
-                              <Input placeholder="Juan Pérez García" {...field} />
+                              <Input 
+                                placeholder="Juan Pérez García" 
+                                maxLength={50}
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -441,9 +457,14 @@ const NuevaCausa = () => {
                         name="actorIdentificacion"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Identificación</FormLabel>
+                            <FormLabel>Identificación (Cédula)</FormLabel>
                             <FormControl>
-                              <Input placeholder="1712345678" maxLength={13} {...field} />
+                              <Input 
+                                placeholder="1712345678" 
+                                maxLength={10}
+                                inputMode="numeric"
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -464,7 +485,11 @@ const NuevaCausa = () => {
                           <FormItem>
                             <FormLabel>Nombre Completo</FormLabel>
                             <FormControl>
-                              <Input placeholder="María López Ruiz" {...field} />
+                              <Input 
+                                placeholder="María López Ruiz" 
+                                maxLength={50}
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -475,9 +500,14 @@ const NuevaCausa = () => {
                         name="demandadoIdentificacion"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Identificación</FormLabel>
+                            <FormLabel>Identificación (Cédula)</FormLabel>
                             <FormControl>
-                              <Input placeholder="0912345678" maxLength={13} {...field} />
+                              <Input 
+                                placeholder="0912345678" 
+                                maxLength={10}
+                                inputMode="numeric"
+                                {...field} 
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>

@@ -18,7 +18,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { getCausas, getAudiencias, getNotificaciones, Causa, Audiencia, Notificacion } from "@/lib/funcionarios-data";
+import { getCausas, getAudiencias, Causa, Audiencia } from "@/lib/funcionarios-data";
+import { plazosService, PlazoProcesal } from "@/services/plazos.service";
 
 interface StatCardProps {
   title: string;
@@ -53,21 +54,28 @@ const DashboardFuncionarios = () => {
   const { user } = useAuth();
   const [causas, setCausas] = useState<Causa[]>([]);
   const [audiencias, setAudiencias] = useState<Audiencia[]>([]);
-  const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
+  const [plazosProximosVencer, setPlazosProximosVencer] = useState<PlazoProcesal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [causasData, audienciasData, notificacionesData] = await Promise.all([
+        const [causasData, audienciasData, plazosData] = await Promise.all([
           getCausas(user?.id),
           getAudiencias(user?.id),
-          getNotificaciones(),
+          plazosService.obtenerAlertasProximas().catch(() => []),
         ]);
         setCausas(causasData);
         setAudiencias(audienciasData);
-        setNotificaciones(notificacionesData);
+        // Filtrar plazos que vencen en los próximos 3 días
+        const hoy = new Date();
+        const plazosEn3Dias = plazosData.filter((p) => {
+          const fechaVencimiento = new Date(p.fechaVencimiento);
+          const diffDias = (fechaVencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24);
+          return diffDias >= 0 && diffDias <= 3 && p.estado === 'PENDIENTE';
+        });
+        setPlazosProximosVencer(plazosEn3Dias);
       } catch (error) {
         console.error("Error loading dashboard data:", error);
       } finally {
@@ -79,13 +87,7 @@ const DashboardFuncionarios = () => {
 
   const causasActivas = causas.filter((c) => c.estado === "en_tramite").length;
   const audienciasHoy = audiencias.filter((a) => a.fecha === new Date().toISOString().split("T")[0]).length;
-  const notificacionesPendientes = notificaciones.filter((n) => n.estado === "pendiente").length;
-  const plazosProximos = notificaciones.filter((n) => {
-    const limit = new Date(n.fechaLimite);
-    const today = new Date();
-    const diff = (limit.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-    return diff <= 3 && diff >= 0;
-  }).length;
+  const plazosProximos = plazosProximosVencer.length;
 
   const proximasAudiencias = audiencias
     .filter((a) => new Date(a.fecha) >= new Date() && a.estado === "programada")
@@ -121,7 +123,7 @@ const DashboardFuncionarios = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <StatCard
           title="Causas Activas"
           value={causasActivas}
@@ -133,12 +135,6 @@ const DashboardFuncionarios = () => {
           value={audienciasHoy}
           description="Programadas"
           icon={Calendar}
-        />
-        <StatCard
-          title="Notificaciones"
-          value={notificacionesPendientes}
-          description="Pendientes de envío"
-          icon={Bell}
         />
         <StatCard
           title="Plazos Próximos"
@@ -299,13 +295,13 @@ const DashboardFuncionarios = () => {
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link to="/funcionarios/audiencias/nueva">
+              <Link to="/funcionarios/audiencias">
                 <Calendar className="w-4 h-4 mr-2" />
                 Programar Audiencia
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link to="/funcionarios/notificaciones">
+              <Link to="/funcionarios/notificaciones-procesales">
                 <Bell className="w-4 h-4 mr-2" />
                 Enviar Notificación
               </Link>

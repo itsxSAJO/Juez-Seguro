@@ -6,7 +6,7 @@
 
 import bcrypt from "bcryptjs";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
-import { usersPool } from "../db/connection.js";
+import { usersPool, casesPool } from "../db/connection.js";
 import { config } from "../config/index.js";
 import { auditService } from "./audit.service.js";
 import type { Funcionario, FuncionarioPublico, TokenPayload, UserRole, EstadoCuenta } from "../types/index.js";
@@ -168,8 +168,30 @@ class AuthService {
 
       await auditService.logLogin(correo, ip, userAgent, true, funcionario.funcionario_id);
 
+      // Obtener pseudónimo según rol para proteger identidad
+      let pseudonimo: string | null = null;
+      if (funcionario.rol_nombre === "JUEZ") {
+        // Para jueces, buscar en mapa_pseudonimos
+        const casesClient = await casesPool.connect();
+        try {
+          const pseudoResult = await casesClient.query(
+            "SELECT pseudonimo_publico FROM mapa_pseudonimos WHERE juez_id_real = $1",
+            [funcionario.funcionario_id]
+          );
+          pseudonimo = pseudoResult.rows[0]?.pseudonimo_publico || `JUEZ-${funcionario.funcionario_id.toString().padStart(4, '0')}`;
+        } finally {
+          casesClient.release();
+        }
+      } else if (funcionario.rol_nombre === "SECRETARIO") {
+        // Para secretarios, generar pseudónimo basado en ID
+        pseudonimo = `SECRETARIO-${funcionario.funcionario_id.toString().padStart(4, '0')}`;
+      } else {
+        // Para ADMIN_CJ, usar identificador genérico
+        pseudonimo = `ADMIN-${funcionario.funcionario_id.toString().padStart(4, '0')}`;
+      }
+
       return {
-        user: this.toPublicFuncionario(funcionario),
+        user: this.toPublicFuncionario(funcionario, pseudonimo),
         token,
         expiresAt,
         requiereCambioPassword: esHabilitable,
@@ -397,13 +419,15 @@ class AuthService {
   }
 
   /**
-   * Convierte funcionario a formato público (sin password)
+   * Convierte funcionario a formato público (sin password ni nombre real)
+   * Se usa el pseudónimo para proteger la identidad del funcionario
    */
-  private toPublicFuncionario(f: Funcionario & { rol_nombre?: UserRole }): FuncionarioPublico {
+  private toPublicFuncionario(f: Funcionario & { rol_nombre?: UserRole }, pseudonimo?: string | null): FuncionarioPublico {
     return {
       funcionarioId: f.funcionario_id,
       identificacion: f.identificacion,
-      nombresCompletos: f.nombres_completos,
+      nombresCompletos: pseudonimo || `${f.rol_nombre || 'FUNC'}-${f.funcionario_id.toString().padStart(4, '0')}`, // Usar pseudónimo en vez de nombre real
+      pseudonimo: pseudonimo || null,
       correoInstitucional: f.correo_institucional,
       rolId: f.rol_id,
       rolNombre: f.rol_nombre,

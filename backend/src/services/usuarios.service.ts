@@ -552,12 +552,24 @@ class FuncionariosService {
 
   /**
    * Convierte funcionario a formato público
+   * Para listados de admin, se muestra el nombre real ya que es necesario para gestión
    */
   private toPublic(f: any): FuncionarioPublico {
+    // Generar pseudónimo basado en rol e ID
+    let pseudonimo: string | null = null;
+    if (f.rol_nombre === "JUEZ") {
+      pseudonimo = `JUEZ-${f.funcionario_id.toString().padStart(4, '0')}`;
+    } else if (f.rol_nombre === "SECRETARIO") {
+      pseudonimo = `SECRETARIO-${f.funcionario_id.toString().padStart(4, '0')}`;
+    } else if (f.rol_nombre === "ADMIN_CJ") {
+      pseudonimo = `ADMIN-${f.funcionario_id.toString().padStart(4, '0')}`;
+    }
+
     return {
       funcionarioId: f.funcionario_id,
       identificacion: f.identificacion,
-      nombresCompletos: f.nombres_completos,
+      nombresCompletos: f.nombres_completos, // Admin puede ver nombres reales para gestión
+      pseudonimo: pseudonimo,
       correoInstitucional: f.correo_institucional,
       rolId: f.rol_id,
       rolNombre: f.rol_nombre,

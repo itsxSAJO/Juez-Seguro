@@ -14,20 +14,23 @@ const log = loggers.auth;
 const router = Router();
 
 // ============================================================================
-// Esquemas de validación
+// Esquemas de validación con límites de seguridad
 // ============================================================================
+import {
+  emailSchema,
+  passwordSchema,
+  passwordActualSchema,
+  LIMITES,
+} from "../utils/validation.utils.js";
+
 const loginSchema = z.object({
-  correo: z.string().email("Correo inválido"),
-  password: z.string().min(1, "Contraseña requerida"),
+  correo: emailSchema,
+  password: passwordActualSchema,
 });
 
 const cambiarPasswordSchema = z.object({
-  passwordActual: z.string().min(1, "Contraseña actual requerida"),
-  passwordNueva: z.string()
-    .min(8, "Mínimo 8 caracteres")
-    .regex(/[A-Z]/, "Debe contener mayúscula")
-    .regex(/[a-z]/, "Debe contener minúscula")
-    .regex(/[0-9]/, "Debe contener número"),
+  passwordActual: passwordActualSchema,
+  passwordNueva: passwordSchema,
 });
 
 // ============================================================================

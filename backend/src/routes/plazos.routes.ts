@@ -12,16 +12,23 @@ import type { TokenPayload, EstadoPlazo } from "../types/index.js";
 
 const router = Router();
 
+// Importar validadores seguros con límites
+import {
+  descripcionSchema,
+  motivoSchema,
+  LIMITES,
+} from "../utils/validation.utils.js";
+
 // ============================================================================
-// ESQUEMAS DE VALIDACIÓN
+// ESQUEMAS DE VALIDACIÓN CON LÍMITES DE SEGURIDAD
 // ============================================================================
 
 const crearPlazoSchema = z.object({
   causaId: z.number().int().positive(),
   notificacionId: z.number().int().positive().optional(),
   decisionId: z.number().int().positive().optional(),
-  tipoPlazo: z.string().min(3).max(100),
-  descripcion: z.string().min(5).max(500),
+  tipoPlazo: z.string().min(3, "Mínimo 3 caracteres").max(100, "Máximo 100 caracteres"),
+  descripcion: descripcionSchema,
   parteResponsable: z
     .enum([
       "actor",
@@ -34,20 +41,20 @@ const crearPlazoSchema = z.object({
       "ambas_partes",
     ])
     .optional(),
-  diasPlazo: z.number().int().positive().max(365),
+  diasPlazo: z.number().int().positive().max(365, "Máximo 365 días"),
   fechaInicio: z.string().datetime().optional(), // ISO 8601
 });
 
 const actualizarEstadoSchema = z.object({
   nuevoEstado: z.enum(["VIGENTE", "CUMPLIDO", "VENCIDO", "SUSPENDIDO", "EXTENDIDO"]),
   fechaCumplimiento: z.string().datetime().optional(),
-  documentoCumplimientoId: z.string().optional(),
-  motivoSuspension: z.string().optional(),
+  documentoCumplimientoId: z.string().max(100).optional(),
+  motivoSuspension: z.string().max(LIMITES.MOTIVO_MAX, `Máximo ${LIMITES.MOTIVO_MAX} caracteres`).optional(),
 });
 
 const calcularVencimientoSchema = z.object({
   fechaInicio: z.string().datetime().optional(),
-  diasHabiles: z.number().int().positive().max(365),
+  diasHabiles: z.number().int().positive().max(365, "Máximo 365 días"),
 });
 
 // ============================================================================

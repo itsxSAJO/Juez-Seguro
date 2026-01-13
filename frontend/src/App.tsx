@@ -29,7 +29,6 @@ import GestionCuentas from "./pages/funcionarios/GestionCuentas";
 import ListaCausas from "./pages/funcionarios/ListaCausas";
 import NuevaCausa from "./pages/funcionarios/NuevaCausa";
 import ExpedienteCausa from "./pages/funcionarios/ExpedienteCausa";
-import GestionDocumentos from "./pages/funcionarios/GestionDocumentos";
 import AgendaAudiencias from "./pages/funcionarios/AgendaAudiencias";
 import EditorDecisiones from "./pages/funcionarios/EditorDecisiones";
 import GestionNotificaciones from "./pages/funcionarios/GestionNotificaciones";
@@ -99,14 +98,6 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRoles={["cj", "juez", "secretario"]}>
                   <ExpedienteCausa />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/funcionarios/documentos"
-              element={
-                <ProtectedRoute allowedRoles={["cj", "juez", "secretario"]}>
-                  <GestionDocumentos />
                 </ProtectedRoute>
               }
             />
