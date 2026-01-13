@@ -670,8 +670,8 @@ class DecisionesService {
       // Crear directorio si no existe
       await fs.mkdir(path.dirname(rutaAbsoluta), { recursive: true });
 
-      // Crear contenido del PDF real usando pdf-lib
-      const pdfContent = await this.generarPdfReal(contenidoFinal, metadatosFirma);
+      // Crear contenido del PDF real usando pdf-lib (usar pseudónimo, NO nombre real)
+      const pdfContent = await this.generarPdfReal(contenidoFinal, metadatosFirma, decision.juezPseudonimo);
       await fs.writeFile(rutaAbsoluta, pdfContent);
 
       // 8. Calcular hash final del PDF
@@ -722,7 +722,7 @@ class DecisionesService {
           decisionId,
           rutaRelativa,
           hashFinal,
-          metadatosFirma.certificadoFirmante,
+          decision.juezPseudonimo, // Usar pseudónimo, NO el nombre real del certificado
           metadatosFirma.numeroSerieCertificado,
           metadatosFirma.algoritmoFirma,
           metadatosFirma.firmaBase64,
@@ -878,8 +878,9 @@ La firma electrónica tiene la misma validez jurídica que la firma manuscrita.
 
   /**
    * Genera un PDF real usando pdf-lib con el contenido de la decisión y metadatos de firma
+   * @param pseudonimoFirmante - Pseudónimo del juez (NO el nombre real del certificado)
    */
-  private async generarPdfReal(contenido: string, firma: MetadatosFirma): Promise<Buffer> {
+  private async generarPdfReal(contenido: string, firma: MetadatosFirma, pseudonimoFirmante: string): Promise<Buffer> {
     // Crear nuevo documento PDF
     const pdfDoc = await PDFDocument.create();
     
@@ -982,7 +983,7 @@ La firma electrónica tiene la misma validez jurídica que la firma manuscrita.
       color: rgb(0.2, 0.5, 0.2),
     });
     
-    currentPage.drawText(`Por: ${firma.certificadoFirmante}`, {
+    currentPage.drawText(`Por: ${pseudonimoFirmante}`, {
       x: margin + 10,
       y: yPosition - 38,
       size: 9,
@@ -1074,21 +1075,30 @@ La firma electrónica tiene la misma validez jurídica que la firma manuscrita.
   async getHistorial(decisionId: number): Promise<HistorialDecision[]> {
     const client = await casesPool.connect();
     try {
+      // Obtener historial con pseudónimo del usuario que modificó
       const result = await client.query(
-        `SELECT * FROM historial_decisiones 
-         WHERE decision_id = $1 
-         ORDER BY fecha_modificacion DESC`,
+        `SELECT h.*, 
+                COALESCE(mp.pseudonimo_publico, 'SISTEMA') as modificado_por_pseudonimo
+         FROM historial_decisiones h
+         LEFT JOIN mapa_pseudonimos mp ON h.modificado_por_id = mp.juez_id_real
+         WHERE h.decision_id = $1 
+         ORDER BY h.fecha_modificacion DESC`,
         [decisionId]
       );
 
-      return result.rows.map(row => ({
+      return result.rows.map((row, index) => ({
         historialId: row.historial_id,
         decisionId: row.decision_id,
+        version: row.version_anterior || (result.rows.length - index),
+        estadoAnterior: row.estado_anterior || 'BORRADOR',
+        estadoNuevo: row.estado_anterior === 'BORRADOR' ? 'LISTA_PARA_FIRMA' : 'FIRMADA',
+        usuarioId: row.modificado_por_id,
+        usuarioPseudonimo: row.modificado_por_pseudonimo || 'SISTEMA',
+        descripcionCambio: row.motivo_cambio || `Modificación versión ${row.version_anterior || 1}`,
+        fechaCambio: row.fecha_modificacion ? new Date(row.fecha_modificacion).toISOString() : new Date().toISOString(),
+        // Campos legacy para compatibilidad
         versionAnterior: row.version_anterior,
         contenidoAnterior: row.contenido_anterior,
-        estadoAnterior: row.estado_anterior,
-        modificadoPorId: row.modificado_por_id,
-        fechaModificacion: row.fecha_modificacion,
         ipOrigen: row.ip_origen,
         motivoCambio: row.motivo_cambio,
       }));

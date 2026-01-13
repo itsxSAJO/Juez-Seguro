@@ -10,12 +10,15 @@
 // - POST   /api/decisiones/:id/preparar - Preparar para firma
 // - POST   /api/decisiones/:id/firmar   - Firmar decisión (INMUTABLE después)
 // - GET    /api/decisiones/:id/verificar - Verificar integridad
+// - GET    /api/decisiones/:id/pdf      - Descargar PDF firmado
 // - GET    /api/decisiones/:id/historial - Historial de versiones
 // - DELETE /api/decisiones/:id          - Eliminar borrador
 // ============================================================================
 
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
+import path from "path";
+import fs from "fs/promises";
 import { decisionesService } from "../services/decisiones.service.js";
 import { firmaService } from "../services/firma.service.js";
 import { auditService } from "../services/audit.service.js";
@@ -24,6 +27,9 @@ import { loggers } from "../services/logger.service.js";
 
 const log = loggers.system;
 const router = Router();
+
+// Ruta de almacenamiento de decisiones (misma que en decisiones.service.ts)
+const DECISIONES_STORAGE_PATH = process.env.SECURE_DOCS_PATH || "./secure_docs_storage";
 
 // ============================================================================
 // Esquemas de validación
@@ -394,11 +400,110 @@ router.get(
         userAgent: getUserAgent(req),
       });
 
+      // Formatear respuesta según interfaz VerificacionFirma del frontend
       res.json({
         success: true,
-        integro: resultado.integro,
-        detalles: resultado.detalles,
+        data: {
+          valida: resultado.integro,
+          mensaje: resultado.integro 
+            ? "La firma del documento es válida y su integridad está verificada"
+            : resultado.detalles?.error || "La verificación de integridad falló",
+          detalles: resultado.integro ? {
+            firmante: resultado.detalles?.firmante || "N/A",
+            certificadoValido: true,
+            fechaFirma: resultado.detalles?.fechaFirma || new Date().toISOString(),
+            hashOriginal: resultado.detalles?.hashAlmacenado || "",
+            hashActual: resultado.detalles?.hashActual || "",
+            hashCoincide: resultado.detalles?.coincide || false,
+          } : undefined,
+        },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ============================================================================
+// GET /api/decisiones/:id/pdf
+// Descargar PDF firmado de una decisión
+// ============================================================================
+router.get(
+  "/:id/pdf",
+  authenticate,
+  authorize("ADMIN_CJ", "JUEZ", "SECRETARIO"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const decisionId = parseInt(req.params.id);
+      if (isNaN(decisionId)) {
+        res.status(400).json({ success: false, error: "ID inválido" });
+        return;
+      }
+
+      // Obtener la decisión para verificar estado y ruta
+      const usuario = buildUserContext(req);
+      const decision = await decisionesService.getDecisionById(decisionId, usuario);
+      
+      if (!decision) {
+        res.status(404).json({ success: false, error: "Decisión no encontrada" });
+        return;
+      }
+
+      if (decision.estado !== "FIRMADA") {
+        res.status(400).json({ 
+          success: false, 
+          error: "Solo se pueden descargar decisiones firmadas" 
+        });
+        return;
+      }
+
+      if (!decision.rutaPdfFirmado) {
+        res.status(404).json({ 
+          success: false, 
+          error: "No se encontró el PDF firmado" 
+        });
+        return;
+      }
+
+      // Construir ruta absoluta del archivo
+      const rutaAbsoluta = path.join(DECISIONES_STORAGE_PATH, decision.rutaPdfFirmado);
+
+      // Verificar que el archivo existe
+      try {
+        await fs.access(rutaAbsoluta);
+      } catch {
+        res.status(404).json({ 
+          success: false, 
+          error: "Archivo PDF no encontrado en el sistema" 
+        });
+        return;
+      }
+
+      // Registrar descarga en auditoría
+      await auditService.log({
+        tipoEvento: "DESCARGA_DOCUMENTO",
+        usuarioId: req.user!.funcionarioId,
+        usuarioCorreo: req.user!.correo,
+        moduloAfectado: "CASOS",
+        descripcion: `Descarga de PDF firmado de decisión ${decisionId}`,
+        datosAfectados: { 
+          decisionId, 
+          tipoDecision: decision.tipoDecision,
+          titulo: decision.titulo 
+        },
+        ipOrigen: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
+
+      // Leer y enviar el archivo
+      const pdfBuffer = await fs.readFile(rutaAbsoluta);
+      const nombreArchivo = `${decision.tipoDecision}_${decisionId}_firmado.pdf`;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${nombreArchivo}"`);
+      res.setHeader("Content-Length", pdfBuffer.length);
+      res.send(pdfBuffer);
+
     } catch (error) {
       next(error);
     }
