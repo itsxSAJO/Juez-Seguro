@@ -369,9 +369,9 @@ class DocumentosService {
 
       // 4. Mapear documentos con pseudónimos de secretarios o jueces
       return docsResult.rows.map(row => {
-        // Priorizar subido_por_nombre si existe (usado para documentos firmados por jueces)
+        // Priorizar subido_por_pseudonimo si existe (usado para documentos firmados por jueces)
         // Sino usar el mapa de funcionarios o generar pseudónimo de secretario
-        const pseudonimo = row.subido_por_nombre || 
+        const pseudonimo = row.subido_por_pseudonimo || 
           funcionariosMap[row.subido_por_id] || 
           `SECRETARIO-${String(row.subido_por_id).padStart(4, '0')}`;
         return {
@@ -523,8 +523,8 @@ class DocumentosService {
       mimeType: row.mime_type,
       subido_por_id: row.subido_por_id,
       subidoPorId: row.subido_por_id,
-      subidoPor: row.subido_por_nombre || `SECRETARIO-${String(row.subido_por_id).padStart(4, '0')}`,
-      subidoPorNombre: row.subido_por_nombre || `SECRETARIO-${String(row.subido_por_id).padStart(4, '0')}`,
+      subidoPor: row.subido_por_pseudonimo || `SECRETARIO-${String(row.subido_por_id).padStart(4, '0')}`,
+      subidoPorNombre: row.subido_por_pseudonimo || `SECRETARIO-${String(row.subido_por_id).padStart(4, '0')}`,
       fecha_subida: row.fecha_subida,
       fechaSubida: row.fecha_subida,
       estado: row.estado,

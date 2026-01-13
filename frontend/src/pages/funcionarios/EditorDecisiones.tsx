@@ -831,20 +831,6 @@ Notifíquese.`
                 </div>
               </div>
             </div>
-
-            <div className="p-4 rounded-lg bg-muted">
-              <h4 className="font-medium mb-2">Información de firma:</h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>• Algoritmo: SHA256 con RSA</li>
-                <li>• Certificado: PKI del sistema judicial</li>
-                <li>• Tipo: {tipoDocumento}</li>
-                <li>• Causa: {causas.find(c => c.id === selectedCausa)?.numeroExpediente || "N/A"}</li>
-              </ul>
-            </div>
-
-            <p className="text-sm text-muted-foreground">
-              Al hacer clic en "Confirmar Firma", el sistema aplicará su firma electrónica utilizando el certificado PKI del servidor.
-            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFirmaModalOpen(false)} disabled={firmando}>
