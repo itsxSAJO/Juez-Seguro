@@ -14,20 +14,20 @@
 // ============================================================================
 
 import bcrypt from "bcryptjs";
-import { config } from "../src/config/index.js";
+import { configBase } from "../src/config/index.js";
 import { usersPool } from "../src/db/connection.js";
 
 // ============================================================================
 // VALIDACIÓN DE ENTORNO - FAIL FAST
 // ============================================================================
 
-if (config.nodeEnv !== "development") {
+if (configBase.nodeEnv !== "development") {
   console.error(`
 ╔══════════════════════════════════════════════════════════════════╗
 ║  ❌ ERROR: ENTORNO DE PRODUCCIÓN DETECTADO                      ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Este script SOLO puede ejecutarse en desarrollo.               ║
-║  NODE_ENV actual: ${config.nodeEnv.padEnd(42)}║
+║  NODE_ENV actual: ${configBase.nodeEnv.padEnd(42)}║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Para ejecutar en desarrollo:                                    ║
 ║  > set NODE_ENV=development                                      ║
@@ -120,7 +120,7 @@ async function seedDevUsers(): Promise<void> {
 ║  🌱 SEED DE USUARIOS DE DESARROLLO                              ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Generando hashes bcrypt dinámicamente...                        ║
-║  Rounds: ${config.security.bcryptRounds.toString().padEnd(52)}║
+║  Rounds: ${configBase.security.bcryptRounds.toString().padEnd(52)}║
 ╚══════════════════════════════════════════════════════════════════╝
 `);
 
@@ -131,7 +131,7 @@ async function seedDevUsers(): Promise<void> {
 
     for (const user of DEV_USERS) {
       // Generar hash bcrypt dinámicamente
-      const passwordHash = await bcrypt.hash(user.password, config.security.bcryptRounds);
+      const passwordHash = await bcrypt.hash(user.password, configBase.security.bcryptRounds);
 
       // Insertar o actualizar usuario
       const result = await client.query(
