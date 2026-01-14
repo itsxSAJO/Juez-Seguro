@@ -514,21 +514,25 @@ CREATE TABLE IF NOT EXISTS notificaciones_procesales (
     -- Estado y tracking
     estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE',
     intentos_envio INTEGER DEFAULT 0,
+    error_envio TEXT,
     
     -- Timestamps
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     fecha_envio TIMESTAMPTZ,
+    fecha_entrega TIMESTAMPTZ,
     fecha_recepcion TIMESTAMPTZ,
     fecha_lectura TIMESTAMPTZ,
     
     -- Auditoría
     creado_por_id INTEGER NOT NULL,
     creado_por_pseudonimo VARCHAR(50),
+    enviado_por_id INTEGER,
     ip_origen VARCHAR(45),
     
-    -- Integridad
+    -- Integridad y evidencia
     hash_contenido CHAR(64),
     comprobante_envio TEXT,
+    evidencia_entrega TEXT,
     
     CONSTRAINT chk_destinatario_tipo CHECK (destinatario_tipo IN (
         'actor', 'demandado', 'abogado_actor', 'abogado_demandado', 
@@ -543,7 +547,7 @@ CREATE TABLE IF NOT EXISTS notificaciones_procesales (
         'CASILLERO_JUDICIAL', 'PUBLICACION', 'DEPRECATORIO'
     )),
     CONSTRAINT chk_estado_notificacion CHECK (estado IN (
-        'PENDIENTE', 'ENVIADA', 'RECIBIDA', 'LEIDA', 'FALLIDA', 'CANCELADA'
+        'PENDIENTE', 'ENVIADA', 'ENTREGADA', 'RECIBIDA', 'LEIDA', 'FALLIDA', 'CANCELADA'
     ))
 );
 
@@ -599,6 +603,7 @@ CREATE TABLE IF NOT EXISTS plazos_procesales (
     -- Cumplimiento
     cumplido BOOLEAN DEFAULT FALSE,
     fecha_cumplimiento TIMESTAMPTZ,
+    documento_cumplimiento_id VARCHAR(50) REFERENCES documentos(id) ON DELETE SET NULL,
     observaciones_cumplimiento TEXT,
     
     -- Auditoría
