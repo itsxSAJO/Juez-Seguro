@@ -42,6 +42,9 @@ RUN npm ci --only=production && npm cache clean --force
 # Copiar código compilado desde builder
 COPY --from=builder /app/dist ./dist
 
+# Copiar código fuente para scripts TypeScript
+COPY --from=builder /app/src ./src
+
 # Copiar scripts de migración y utilidades
 COPY --from=builder /app/scripts ./scripts
 COPY tsconfig.json ./
