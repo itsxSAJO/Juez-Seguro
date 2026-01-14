@@ -75,8 +75,11 @@ class ApiClient {
         throw new ApiError("Sesión expirada", 401, "SESSION_EXPIRED");
       }
       
+      // El backend envía 'error' o 'message'
+      const errorMessage = errorData.error || errorData.message || "Error en la solicitud";
+      
       throw new ApiError(
-        errorData.message || "Error en la solicitud",
+        errorMessage,
         response.status,
         errorData.code
       );

@@ -10,8 +10,10 @@ import { causasService } from "../services/causas.service.js";
 import { auditService } from "../services/audit.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
 import { verificarPropiedadCausa } from "../middleware/access-control.middleware.js";
+import { loggers } from "../services/logger.service.js";
 
 const router = Router();
+const log = loggers.causas;
 
 // Importar validadores seguros con límites de caracteres
 import {
@@ -240,6 +242,10 @@ router.post(
       // Validar datos de entrada
       const validation = crearCausaAutoSchema.safeParse(req.body);
       if (!validation.success) {
+        log.error("Error de validación al crear causa:", {
+          errors: validation.error.errors,
+          body: req.body
+        });
         res.status(400).json({
           success: false,
           error: validation.error.errors[0].message,
@@ -288,6 +294,7 @@ router.post(
       }
       
       if (error.code === "NO_JUECES_DISPONIBLES") {
+        log.warn("No hay jueces disponibles:", error.message);
         res.status(400).json({
           success: false,
           error: error.message,
