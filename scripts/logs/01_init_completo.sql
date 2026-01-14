@@ -250,7 +250,7 @@ RETURNS TABLE (
     registros_verificados BIGINT,
     registros_validos BIGINT,
     registros_invalidos BIGINT,
-    primer_invalido UUID,
+    primer_invalido INTEGER,
     integridad_ok BOOLEAN
 ) AS $$
 DECLARE
@@ -260,10 +260,10 @@ DECLARE
     v_verificados BIGINT := 0;
     v_validos BIGINT := 0;
     v_invalidos BIGINT := 0;
-    v_primer_invalido UUID := NULL;
+    v_primer_invalido INTEGER := NULL;
 BEGIN
     FOR v_registro IN 
-        SELECT id, hash_actual, hash_anterior, fecha_evento
+        SELECT log_id, hash_evento, hash_anterior, fecha_evento
         FROM logs_auditoria
         WHERE (p_desde IS NULL OR fecha_evento >= p_desde)
           AND (p_hasta IS NULL OR fecha_evento <= p_hasta)
@@ -273,12 +273,12 @@ BEGIN
         v_verificados := v_verificados + 1;
         
         -- Verificar que el hash existe
-        IF v_registro.hash_actual IS NOT NULL AND v_registro.hash_actual != '' THEN
+        IF v_registro.hash_evento IS NOT NULL AND v_registro.hash_evento != '' THEN
             v_validos := v_validos + 1;
         ELSE
             v_invalidos := v_invalidos + 1;
             IF v_primer_invalido IS NULL THEN
-                v_primer_invalido := v_registro.id;
+                v_primer_invalido := v_registro.log_id;
             END IF;
         END IF;
     END LOOP;
