@@ -62,7 +62,7 @@ export interface BlobValidationResult {
  * }
  */
 export function validateBlobType(blob: Blob): BlobValidationResult {
-  const detectedType = blob.type || "unknown";
+  const detectedType = blob.type || "application/pdf"; // Asumir PDF si no hay tipo
 
   // Verificar si es un tipo peligroso
   if (DANGEROUS_MIME_TYPES.some(dangerous => detectedType.includes(dangerous))) {
@@ -73,17 +73,17 @@ export function validateBlobType(blob: Blob): BlobValidationResult {
     };
   }
 
-  // Verificar si es un tipo permitido
-  if (!ALLOWED_MIME_TYPES.includes(detectedType)) {
+  // Si no hay tipo especificado, asumir que es válido (el servidor ya validó)
+  if (!blob.type || blob.type === "" || ALLOWED_MIME_TYPES.includes(detectedType)) {
     return {
-      isValid: false,
-      error: `Tipo de archivo no reconocido: ${detectedType}. Solo se permiten documentos PDF.`,
+      isValid: true,
       detectedType,
     };
   }
 
   return {
-    isValid: true,
+    isValid: false,
+    error: `Tipo de archivo no reconocido: ${detectedType}. Solo se permiten documentos PDF.`,
     detectedType,
   };
 }

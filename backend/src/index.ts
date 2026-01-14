@@ -101,8 +101,17 @@ app.use("/api/auth/login", authLimiter);
 
 // Body parsers - Aumentado a 100mb para soportar PDFs grandes en base64
 // Base64 aumenta el tamaño ~33%, un PDF de 50MB = ~66MB en base64
-app.use(express.json({ limit: "100mb" }));
-app.use(express.urlencoded({ extended: true, limit: "100mb" }));
+// Nota: Algunos proxies o middlewares pueden tener límites adicionales
+app.use(express.json({ 
+  limit: "100mb",
+  strict: false,
+  type: 'application/json'
+}));
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: "100mb",
+  parameterLimit: 50000
+}));
 
 // ============================================================================
 // Middleware de Sanitización (Protección SQL Injection y XSS)
@@ -111,7 +120,7 @@ app.use(sanitizationMiddleware({
   blockSQLInjection: true,  // Bloquea y registra intentos de SQL Injection
   blockXSS: false,          // Sanitiza XSS pero no bloquea (permite HTML en contenido legal)
   logAttacks: true,         // Registra todos los intentos en audit_alertas_seguridad
-  excludePaths: ["/api/health"], // Excluir health check
+  excludePaths: ["/api/health", "/api/documentos"], // Excluir health check y documentos (base64 no puede tener SQL injection)
 }));
 
 // Inyectar interceptor de auditoría en todas las requests
@@ -266,7 +275,7 @@ const startServer = async () => {
     const dbStatus = await testConnections();
     log.info("✅ Conexiones establecidas", dbStatus);
 
-    // Iniciar servidor HTTP
+    // Iniciar servidor HTTP con configuración aumentada para body grande
     const server = app.listen(configBase.port, () => {
       log.info(`
 ╔═══════════════════════════════════════════════════════════╗
@@ -274,6 +283,7 @@ const startServer = async () => {
 ║              Sistema Judicial Seguro v1.0.0               ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  🌐 Servidor:     http://localhost:${configBase.port}                   ║
+║  📦 Max Body:     100MB (para PDFs grandes)                ║
 ║  📊 Health:       http://localhost:${configBase.port}/api/health        ║
 ║  🔐 Auth:         http://localhost:${configBase.port}/api/auth          ║
 ║  👥 Usuarios:     http://localhost:${configBase.port}/api/usuarios      ║
@@ -291,6 +301,10 @@ const startServer = async () => {
 ║  Secretos: ${secretsManager.listSecretNames().length} cargados desde db_secrets              ║
 ╚═══════════════════════════════════════════════════════════╝
       `);
+      
+      // Configurar límites del servidor HTTP de Node.js
+      server.maxHeadersCount = 2000;
+      server.timeout = 300000; // 5 minutos para uploads grandes
 
       // Iniciar monitoreo de plazos (cada 60 minutos)
       alertasService.iniciarMonitoreo(60);

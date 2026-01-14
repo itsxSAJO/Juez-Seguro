@@ -16,7 +16,7 @@ import { audienciasService, AudienciaConHistorial } from "@/services/audiencias.
 import { causasService, HistorialReprogramacion } from "@/services/causas.service";
 import { notificacionesProcesalesService, NotificacionProcesal } from "@/services/notificaciones-procesales.service";
 import { documentosService } from "@/services/documentos.service";
-import { secureOpenDocument, secureDownload, validateBlobType, sanitizeFilename } from "@/utils/file-security";
+import { secureOpenDocument, validateBlobType, sanitizeFilename } from "@/utils/file-security";
 import {
   ArrowLeft,
   FileText,
@@ -287,28 +287,11 @@ const ExpedienteCausa = () => {
   };
 
   // Función para descargar un documento
-  // SEGURIDAD: Sanitización de nombre y validación de MIME type para prevenir DOM XSS
+  // SEGURIDAD: El servicio ya maneja la sanitización y validación
   const handleDescargarDocumento = async (docId: string, nombreArchivo: string) => {
     try {
-      const blob = await documentosService.descargarDocumento(docId);
-      
-      // SEGURIDAD: Validar tipo de archivo antes de descargar
-      const validation = validateBlobType(blob);
-      if (!validation.isValid) {
-        console.error("[SEGURIDAD] Intento de descargar archivo no permitido:", validation.detectedType);
-        toast({
-          variant: "destructive",
-          title: "Error de seguridad",
-          description: validation.error || "Tipo de archivo no permitido",
-        });
-        return;
-      }
-
-      // SEGURIDAD: Sanitizar nombre de archivo
-      const safeName = sanitizeFilename(nombreArchivo);
-      
-      // Descargar de forma segura
-      secureDownload(blob, safeName);
+      await documentosService.descargarDocumento(docId);
+      // La descarga se inicia automáticamente desde el servicio
     } catch (error) {
       console.error("Error al descargar documento:", error);
       toast({

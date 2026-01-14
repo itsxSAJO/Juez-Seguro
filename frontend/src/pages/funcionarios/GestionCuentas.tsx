@@ -668,17 +668,11 @@ const GestionCuentas = () => {
 
       {/* Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Funcionarios Registrados</CardTitle>
-            <CardDescription>
-              {funcionariosProtegidos.length} funcionarios (datos encriptados en BD)
-            </CardDescription>
-          </div>
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
-          </Button>
+        <CardHeader>
+          <CardTitle>Funcionarios Registrados</CardTitle>
+          <CardDescription>
+            {funcionariosProtegidos.length} funcionarios (datos encriptados en BD)
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (

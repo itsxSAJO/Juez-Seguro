@@ -123,10 +123,20 @@ export const documentosService = {
       contenido: base64Content,
     };
 
+    console.log('📦 Preparando payload:', {
+      causaId: payload.causaId,
+      tipo: payload.tipo,
+      nombreOriginal: payload.nombreOriginal,
+      longitudContenido: payload.contenido.length
+    });
+
+    const bodyString = JSON.stringify(payload);
+    console.log('📤 Body string generado, longitud total:', bodyString.length);
+
     const response = await fetch(`${API_BASE_URL}/documentos`, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body: bodyString,
     });
 
     if (!response.ok) {
@@ -146,86 +156,24 @@ export const documentosService = {
   /**
    * Descarga un documento
    */
-  async descargarDocumento(id: string): Promise<Blob> {
-    const token = sessionStorage.getItem("auth_token");
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/documentos/${id}/descargar`, {
-      method: "GET",
-      headers,
-    });
-
-    if (!response.ok) {
-      throw new Error("Error al descargar el documento");
-    }
-
-    return response.blob();
-  },
-
-  /**
-   * Visualiza un documento en una nueva pestaña
-   * SEGURIDAD: Validación de blob y esquema URL para prevenir Open Redirect
-   */
-  async verDocumento(id: string): Promise<void> {
+  async descargarDocumento(id: string): Promise<void> {
     try {
-      console.log('===========================================');
-      console.log('🔍 INICIO verDocumento - ID:', id);
-      console.log('===========================================');
-      
       const token = sessionStorage.getItem("auth_token");
       const headers: HeadersInit = {};
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      console.log('📤 Enviando petición al servidor...');
-      
-      const response = await fetch(`${API_BASE_URL}/documentos/${id}/ver`, {
+      const response = await fetch(`${API_BASE_URL}/documentos/${id}/descargar`, {
         method: "GET",
         headers,
       });
 
       if (!response.ok) {
-        console.error('❌ Error en respuesta del servidor:', response.status, response.statusText);
-        throw new Error("Error al obtener el documento");
+        throw new Error("Error al descargar el documento");
       }
 
-      console.log('✅ Respuesta OK, procesando blob...');
-      console.log('📊 Headers:', {
-        contentType: response.headers.get('content-type'),
-        contentLength: response.headers.get('content-length'),
-        contentDisposition: response.headers.get('content-disposition')
-      });
-      
       const blob = await response.blob();
-      console.log('📦 Blob creado:', {
-        size: blob.size,
-        type: blob.type
-      });
-      
-      // DEBUG: Leer los primeros bytes del blob para verificar contenido
-      const arrayBuffer = await blob.slice(0, 100).arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      const firstBytes = Array.from(uint8Array.slice(0, 10))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join(' ');
-      const textDecoder = new TextDecoder('ascii');
-      const firstChars = textDecoder.decode(uint8Array.slice(0, 10));
-      console.log('🔍 Primeros bytes (hex):', firstBytes);
-      console.log('🔍 Primeros caracteres:', firstChars);
-      console.log('🔍 ¿Comienza con %PDF?', firstChars.startsWith('%PDF'));
-      
-      // SEGURIDAD: Validar que sea un PDF antes de abrir
-      console.log('🔒 Validando tipo de archivo...');
-      const validation = validateBlobType(blob);
-      if (!validation.isValid) {
-        console.error('❌ Validación fallida:', validation.error);
-        throw new Error(validation.error || "Tipo de archivo no permitido");
-      }
-      console.log('✅ Validación exitosa');
       
       // Obtener el nombre del archivo del header Content-Disposition
       const contentDisposition = response.headers.get('content-disposition');
@@ -234,56 +182,85 @@ export const documentosService = {
       if (contentDisposition) {
         const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
         if (matches && matches[1]) {
-          fileName = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+          fileName = decodeURIComponent(matches[1].replace(/['"]|UTF-8''/g, ''));
         }
       }
       
-      // Asegurar que el archivo tenga extensión .pdf
-      if (!fileName.toLowerCase().endsWith('.pdf')) {
-        fileName += '.pdf';
-      }
-      
-      console.log('📄 Nombre del archivo:', fileName);
-      
-      // Crear URL blob
+      // Crear URL blob y descargar
       const url = window.URL.createObjectURL(blob);
-      console.log('🔗 URL blob creada:', url);
-      
-      // Validar esquema blob:
-      if (!url.startsWith("blob:")) {
-        console.error('❌ URL no válida:', url);
-        window.URL.revokeObjectURL(url);
-        throw new Error("Error de seguridad: URL no válida");
-      }
-      
-      // Crear un link de descarga temporal y hacer clic
       const link = document.createElement('a');
       link.href = url;
       link.download = fileName;
       link.style.display = 'none';
       
       document.body.appendChild(link);
-      console.log('⬇️ Iniciando descarga del archivo...');
-      console.log('📋 Link href:', link.href);
-      console.log('📋 Link download:', link.download);
-      
-      // Usar un timeout más largo para asegurar que la descarga complete
-      // En algunos navegadores, la descarga es asíncrona
       link.click();
-      console.log('✅ Click ejecutado, esperando 5 segundos antes de limpiar...');
       
-      // Esperar más tiempo antes de limpiar (5 segundos)
       setTimeout(() => {
         if (document.body.contains(link)) {
           document.body.removeChild(link);
         }
         window.URL.revokeObjectURL(url);
-        console.log('🧹 Link removido y URL revocada después de 5 segundos');
-        console.log('===========================================');
-      }, 5000);
+      }, 1000);
+    } catch (error) {
+      console.error('❌ Error al descargar documento:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Visualiza un documento en una nueva pestaña
+   * SEGURIDAD: Validación de blob y esquema URL para prevenir Open Redirect
+   */
+  async verDocumento(id: string): Promise<void> {
+    try {
+      const token = sessionStorage.getItem("auth_token");
+      const headers: HeadersInit = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/documentos/${id}/ver`, {
+        method: "GET",
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error("Error al obtener el documento");
+      }
+
+      const blob = await response.blob();
+      
+      // SEGURIDAD: Validar que sea un PDF antes de abrir
+      const validation = validateBlobType(blob);
+      if (!validation.isValid) {
+        throw new Error(validation.error || "Tipo de archivo no permitido");
+      }
+      
+      // Crear URL blob
+      const url = window.URL.createObjectURL(blob);
+      
+      // Validar esquema blob:
+      if (!url.startsWith("blob:")) {
+        window.URL.revokeObjectURL(url);
+        throw new Error("Error de seguridad: URL no válida");
+      }
+      
+      // Abrir en nueva pestaña
+      const newWindow = window.open(url, '_blank');
+      
+      if (!newWindow) {
+        // Si el navegador bloquea popups, intentar con secureOpenDocument
+        secureOpenDocument(url, `documento-${id}.pdf`);
+      }
+      
+      // Limpiar después de un tiempo (el navegador mantiene el blob en uso mientras la pestaña está abierta)
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 60000); // 1 minuto para que la pestaña cargue el PDF
       
     } catch (error) {
-      console.error('❌ ERROR en verDocumento:', error);
+      console.error('❌ Error al visualizar documento:', error);
       throw error;
     }
   },
