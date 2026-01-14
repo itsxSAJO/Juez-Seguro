@@ -116,7 +116,8 @@ CREATE TABLE IF NOT EXISTS documentos (
     -- Archivo
     ruta VARCHAR(500),
     formato VARCHAR(10),
-    tamano_bytes BIGINT,
+    tamanio_bytes BIGINT,
+    mime_type VARCHAR(100) DEFAULT 'application/pdf',
     hash_integridad VARCHAR(64) NOT NULL,
     
     -- Estado
@@ -125,6 +126,7 @@ CREATE TABLE IF NOT EXISTS documentos (
     -- Auditoría
     fecha_subida TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     subido_por_id INTEGER,
+    fecha_eliminacion TIMESTAMPTZ,
     
     CONSTRAINT chk_estado_documento CHECK (estado IN ('activo', 'eliminado', 'borrador', 'pendiente', 'firmado', 'notificado'))
 );
