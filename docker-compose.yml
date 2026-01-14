@@ -183,6 +183,9 @@ services:
       # Configuración JWT (ahora cargado desde db_secrets)
       JWT_EXPIRATION: ${JWT_EXPIRATION:-8h}
       
+      # CORS - Orígenes permitidos (separados por comas)
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080,http://localhost:5173}
+      
       # Ruta de almacenamiento seguro para documentos
       SECURE_STORAGE_PATH: /app/storage/expedientes_seguros
       
