@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS funcionarios (
     funcionario_id SERIAL PRIMARY KEY,
     
     -- Identificación (CIFRADO: VARCHAR(500) para almacenar datos cifrados)
-    identificacion VARCHAR(500) NOT NULL,
+    -- UNIQUE requerido para ON CONFLICT en seed-users-dev.ts
+    identificacion VARCHAR(500) NOT NULL UNIQUE,
     nombres_completos VARCHAR(500) NOT NULL,
     -- correo_institucional NO está cifrado para permitir búsquedas en login
     correo_institucional VARCHAR(255) NOT NULL UNIQUE,
