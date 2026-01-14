@@ -143,7 +143,7 @@ export const FuncionariosSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [notificacionesNoLeidas, setNotificacionesNoLeidas] = useState(0);
 
-  // Cargar conteo de notificaciones no leídas
+  // Cargar conteo de notificaciones no leídas (solo para juez y secretario)
   useEffect(() => {
     const cargarNotificaciones = async () => {
       try {
@@ -154,7 +154,8 @@ export const FuncionariosSidebar = () => {
       }
     };
 
-    if (user) {
+    // Solo cargar notificaciones para juez y secretario (admin/cj no tiene notificaciones)
+    if (user && (user.cargo === "juez" || user.cargo === "secretario")) {
       cargarNotificaciones();
       // Actualizar cada 30 segundos
       const intervalo = setInterval(cargarNotificaciones, 30000);

@@ -223,7 +223,7 @@ export const plazosService = {
    */
   async obtenerAlertasProximas(): Promise<PlazoProcesal[]> {
     const response = await api.get<{ success: boolean; data: PlazoProcesal[] }>(
-      "/plazos/alertas"
+      "/plazos/alertas/mis-alertas"
     );
     
     if (response.success && response.data) {

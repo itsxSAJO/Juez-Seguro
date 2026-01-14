@@ -57,19 +57,18 @@ CREATE TABLE IF NOT EXISTS funcionarios (
     materia VARCHAR(100),
     
     -- Estado de la cuenta
-    estado VARCHAR(30) NOT NULL DEFAULT 'ACTIVO',
+    estado VARCHAR(30) NOT NULL DEFAULT 'ACTIVA',
     intentos_fallidos INTEGER DEFAULT 0,
     fecha_bloqueo TIMESTAMPTZ,
     
     -- Auditoría
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    fecha_modificacion TIMESTAMPTZ DEFAULT NOW(),
-    ultimo_acceso TIMESTAMPTZ,
+    fecha_actualizacion TIMESTAMPTZ DEFAULT NOW(),
+    ultimo_login TIMESTAMPTZ,
     
     -- Restricciones
-    -- Estados: ACTIVO (puede operar), INACTIVO (deshabilitado), BLOQUEADO (por intentos fallidos),
-    --          SUSPENDIDO (suspensión administrativa)
-    CONSTRAINT chk_estado_funcionario CHECK (estado IN ('ACTIVO', 'INACTIVO', 'BLOQUEADO', 'SUSPENDIDO')),
+    -- Estados: ACTIVA, INACTIVA, BLOQUEADA, SUSPENDIDA, HABILITABLE, PENDIENTE
+    CONSTRAINT chk_estado_funcionario CHECK (estado IN ('ACTIVA', 'INACTIVA', 'BLOQUEADA', 'SUSPENDIDA', 'HABILITABLE', 'PENDIENTE')),
     CONSTRAINT chk_intentos_fallidos CHECK (intentos_fallidos >= 0 AND intentos_fallidos <= 10)
 );
 
@@ -130,12 +129,12 @@ CREATE INDEX IF NOT EXISTS idx_sesiones_expiracion ON sesiones_activas(expiracio
 COMMENT ON TABLE sesiones_activas IS 'Control de sesiones activas para prevenir accesos concurrentes no autorizados';
 
 -- ============================================================================
--- FUNCIÓN: Actualizar timestamp de modificación
+-- FUNCIÓN: Actualizar timestamp de actualización
 -- ============================================================================
-CREATE OR REPLACE FUNCTION actualizar_fecha_modificacion()
+CREATE OR REPLACE FUNCTION actualizar_fecha_actualizacion()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.fecha_modificacion = NOW();
+    NEW.fecha_actualizacion = NOW();
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -145,7 +144,7 @@ DROP TRIGGER IF EXISTS trigger_actualizar_fecha_funcionarios ON funcionarios;
 CREATE TRIGGER trigger_actualizar_fecha_funcionarios
     BEFORE UPDATE ON funcionarios
     FOR EACH ROW
-    EXECUTE FUNCTION actualizar_fecha_modificacion();
+    EXECUTE FUNCTION actualizar_fecha_actualizacion();
 
 -- ============================================================================
 -- DATOS INICIALES: Roles del Sistema
