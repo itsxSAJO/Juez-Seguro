@@ -8,8 +8,10 @@ import { documentosService } from "../services/documentos.service.js";
 import { auditService } from "../services/audit.service.js";
 import { authenticate, authorize, getClientIp, getUserAgent } from "../middleware/auth.middleware.js";
 import { verificarPropiedadCausa, verificarPropiedadDocumento } from "../middleware/access-control.middleware.js";
+import { loggers } from "../services/logger.service.js";
 
 const router = Router();
+const log = loggers.documentos;
 
 // ============================================================================
 // Esquemas de validación
@@ -71,9 +73,11 @@ router.get(
   verificarPropiedadDocumento("id"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      log.debug(`Intentando visualizar documento ${req.params.id}`);
       const archivo = await documentosService.obtenerContenido(req.params.id);
 
       if (!archivo) {
+        log.warn(`Documento ${req.params.id} no encontrado`);
         res.status(404).json({
           success: false,
           error: "Documento no encontrado o archivo no disponible",
@@ -88,6 +92,7 @@ router.get(
       const validacion = documentosService.validarContenidoPDF(archivo.contenido);
 
       if (!validacion.esValido) {
+        log.error(`Documento ${req.params.id} falló validación de Magic Bytes:`, validacion.error);
         // Registrar intento de servir archivo no-PDF (posible ataque XSS)
         await auditService.log({
           tipoEvento: "ACCESO_DENEGADO",
@@ -117,6 +122,8 @@ router.get(
       await auditService.logCRUD("documento", "visualizar", req.user!.funcionarioId, req.params.id, {
         nombre: archivo.nombre,
       }, getClientIp(req), getUserAgent(req), req.user!.correo);
+
+      log.debug(`Sirviendo PDF: ${archivo.nombre}, tamaño: ${archivo.contenido.length} bytes, tipo: ${validacion.mimeTypeSeguro}`);
 
       // =====================================================================
       // RESPUESTA SEGURA CON CABECERAS ANTI-XSS
@@ -339,7 +346,9 @@ router.post(
       }
 
       // Decodificar contenido de Base64
+      log.debug(`Recibido base64, longitud string: ${datos.contenido.length} caracteres`);
       const contenido = Buffer.from(datos.contenido, "base64");
+      log.debug(`Buffer decodificado, tamaño: ${contenido.length} bytes`);
 
       const documento = await documentosService.subirDocumento({
         causaId: datos.causaId,
