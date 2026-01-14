@@ -213,17 +213,27 @@ export function secureOpenDocument(blob: Blob): string {
   }
 
   // SEGURIDAD: Abrir con flags de aislamiento de contexto
-  // noopener: Previene que la nueva ventana acceda a window.opener
-  // noreferrer: No envía header Referer y también implica noopener
+  // Usar elemento <a> para evitar bloqueo de popup
   // snyk:disable-next-line:open-redirect
   // Justificación: URL blob: generada por createObjectURL() es same-origin,
   // validada con startsWith("blob:"), y no permite redirección a dominios externos
-  window.open(url, "_blank", "noopener,noreferrer");
+  
+  // Crear elemento <a> temporal
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer'; // Aislamiento de contexto
+  
+  // Agregar al DOM, hacer clic, y remover inmediatamente
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 
   // Programar limpieza de la URL después de un tiempo razonable
+  // 5 minutos para dar tiempo a que el PDF cargue completamente
   setTimeout(() => {
     window.URL.revokeObjectURL(url);
-  }, 60000); // 1 minuto
+  }, 300000); // 5 minutos
 
   return url;
 }

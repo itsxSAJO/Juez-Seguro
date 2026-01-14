@@ -99,9 +99,10 @@ const authLimiter = rateLimit({
 app.use("/api/", generalLimiter);
 app.use("/api/auth/login", authLimiter);
 
-// Body parsers
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+// Body parsers - Aumentado a 100mb para soportar PDFs grandes en base64
+// Base64 aumenta el tamaño ~33%, un PDF de 50MB = ~66MB en base64
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
 // ============================================================================
 // Middleware de Sanitización (Protección SQL Injection y XSS)

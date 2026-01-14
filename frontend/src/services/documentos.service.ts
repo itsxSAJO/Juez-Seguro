@@ -76,19 +76,34 @@ export const documentosService = {
    * FORMATO: JSON con contenido en base64 (no FormData)
    */
   async subirDocumento(data: SubirDocumentoRequest): Promise<Documento> {
-    // Convertir archivo a Base64
+    console.log('📤 Iniciando subida de documento:', {
+      nombre: data.nombre,
+      tamanoOriginal: data.archivo.size,
+      tipo: data.tipo
+    });
+    
+    // Convertir archivo a Base64 usando ArrayBuffer (más confiable que DataURL)
     const base64Content = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(data.archivo);
+      reader.readAsArrayBuffer(data.archivo);
       reader.onload = () => {
-        const result = reader.result?.toString().split(",")[1];
-        if (result) {
-          resolve(result);
-        } else {
-          reject(new Error("Error al leer el archivo"));
+        const arrayBuffer = reader.result as ArrayBuffer;
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
         }
+        const base64 = btoa(binary);
+        console.log('✅ Archivo convertido a base64:', {
+          tamanoArrayBuffer: arrayBuffer.byteLength,
+          tamanoBase64: base64.length
+        });
+        resolve(base64);
       };
-      reader.onerror = () => reject(new Error("Error al leer el archivo"));
+      reader.onerror = () => {
+        console.error('❌ Error al leer el archivo');
+        reject(new Error("Error al leer el archivo"));
+      };
     });
 
     // Usar sessionStorage con 'auth_token' (consistente con AuthContext)
@@ -155,34 +170,122 @@ export const documentosService = {
    * SEGURIDAD: Validación de blob y esquema URL para prevenir Open Redirect
    */
   async verDocumento(id: string): Promise<void> {
-    const token = sessionStorage.getItem("auth_token");
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
+    try {
+      console.log('===========================================');
+      console.log('🔍 INICIO verDocumento - ID:', id);
+      console.log('===========================================');
+      
+      const token = sessionStorage.getItem("auth_token");
+      const headers: HeadersInit = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
 
-    const response = await fetch(`${API_BASE_URL}/documentos/${id}/ver`, {
-      method: "GET",
-      headers,
-    });
+      console.log('📤 Enviando petición al servidor...');
+      
+      const response = await fetch(`${API_BASE_URL}/documentos/${id}/ver`, {
+        method: "GET",
+        headers,
+      });
 
-    if (!response.ok) {
-      throw new Error("Error al obtener el documento");
-    }
+      if (!response.ok) {
+        console.error('❌ Error en respuesta del servidor:', response.status, response.statusText);
+        throw new Error("Error al obtener el documento");
+      }
 
-    const blob = await response.blob();
-    
-    // SEGURIDAD: Validar que sea un PDF antes de abrir
-    const validation = validateBlobType(blob);
-    if (!validation.isValid) {
-      throw new Error(validation.error || "Tipo de archivo no permitido");
+      console.log('✅ Respuesta OK, procesando blob...');
+      console.log('📊 Headers:', {
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length'),
+        contentDisposition: response.headers.get('content-disposition')
+      });
+      
+      const blob = await response.blob();
+      console.log('📦 Blob creado:', {
+        size: blob.size,
+        type: blob.type
+      });
+      
+      // DEBUG: Leer los primeros bytes del blob para verificar contenido
+      const arrayBuffer = await blob.slice(0, 100).arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const firstBytes = Array.from(uint8Array.slice(0, 10))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ');
+      const textDecoder = new TextDecoder('ascii');
+      const firstChars = textDecoder.decode(uint8Array.slice(0, 10));
+      console.log('🔍 Primeros bytes (hex):', firstBytes);
+      console.log('🔍 Primeros caracteres:', firstChars);
+      console.log('🔍 ¿Comienza con %PDF?', firstChars.startsWith('%PDF'));
+      
+      // SEGURIDAD: Validar que sea un PDF antes de abrir
+      console.log('🔒 Validando tipo de archivo...');
+      const validation = validateBlobType(blob);
+      if (!validation.isValid) {
+        console.error('❌ Validación fallida:', validation.error);
+        throw new Error(validation.error || "Tipo de archivo no permitido");
+      }
+      console.log('✅ Validación exitosa');
+      
+      // Obtener el nombre del archivo del header Content-Disposition
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = `documento-${id}.pdf`;
+      
+      if (contentDisposition) {
+        const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
+        if (matches && matches[1]) {
+          fileName = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+        }
+      }
+      
+      // Asegurar que el archivo tenga extensión .pdf
+      if (!fileName.toLowerCase().endsWith('.pdf')) {
+        fileName += '.pdf';
+      }
+      
+      console.log('📄 Nombre del archivo:', fileName);
+      
+      // Crear URL blob
+      const url = window.URL.createObjectURL(blob);
+      console.log('🔗 URL blob creada:', url);
+      
+      // Validar esquema blob:
+      if (!url.startsWith("blob:")) {
+        console.error('❌ URL no válida:', url);
+        window.URL.revokeObjectURL(url);
+        throw new Error("Error de seguridad: URL no válida");
+      }
+      
+      // Crear un link de descarga temporal y hacer clic
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      console.log('⬇️ Iniciando descarga del archivo...');
+      console.log('📋 Link href:', link.href);
+      console.log('📋 Link download:', link.download);
+      
+      // Usar un timeout más largo para asegurar que la descarga complete
+      // En algunos navegadores, la descarga es asíncrona
+      link.click();
+      console.log('✅ Click ejecutado, esperando 5 segundos antes de limpiar...');
+      
+      // Esperar más tiempo antes de limpiar (5 segundos)
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+        window.URL.revokeObjectURL(url);
+        console.log('🧹 Link removido y URL revocada después de 5 segundos');
+        console.log('===========================================');
+      }, 5000);
+      
+    } catch (error) {
+      console.error('❌ ERROR en verDocumento:', error);
+      throw error;
     }
-    
-    // Usar función centralizada que:
-    // 1. Valida esquema blob: (previene Open Redirect)
-    // 2. Usa noopener,noreferrer (aísla contexto)
-    // 3. Limpia URL automáticamente después de 60s
-    secureOpenDocument(blob);
   },
 
   /**

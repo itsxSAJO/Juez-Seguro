@@ -265,7 +265,16 @@ class DocumentosService {
     await fs.mkdir(path.dirname(rutaAbsoluta), { recursive: true });
 
     // Escribir archivo en el filesystem
+    log.debug(`Guardando archivo: ${rutaAbsoluta}, tamaño Buffer: ${input.contenido.length} bytes`);
     await fs.writeFile(rutaAbsoluta, input.contenido);
+    
+    // Verificar que se escribió correctamente
+    const stats = await fs.stat(rutaAbsoluta);
+    log.debug(`Archivo guardado, tamaño en disco: ${stats.size} bytes`);
+    
+    if (stats.size !== input.contenido.length) {
+      log.error(`¡ADVERTENCIA! Tamaño diferente: Buffer=${input.contenido.length}, Disco=${stats.size}`);
+    }
 
     // -----------------------------------------------------------------------
     // PASO 4: PERSISTENCIA DE METADATOS (db_casos)

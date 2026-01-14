@@ -15,6 +15,7 @@ import { getCausaById, getDocumentos, Causa, Documento } from "@/lib/funcionario
 import { audienciasService, AudienciaConHistorial } from "@/services/audiencias.service";
 import { causasService, HistorialReprogramacion } from "@/services/causas.service";
 import { notificacionesProcesalesService, NotificacionProcesal } from "@/services/notificaciones-procesales.service";
+import { documentosService } from "@/services/documentos.service";
 import { secureOpenDocument, secureDownload, validateBlobType, sanitizeFilename } from "@/utils/file-security";
 import {
   ArrowLeft,
@@ -239,88 +240,33 @@ const ExpedienteCausa = () => {
 
     setUploading(true);
     try {
-      // Convertir archivo a Base64
-      const reader = new FileReader();
-      reader.readAsDataURL(selectedFile);
+      await documentosService.subirDocumento({
+        causaId: id,
+        tipo: tipoDocumento as any,
+        nombre: selectedFile.name,
+        archivo: selectedFile,
+      });
       
-      reader.onload = async () => {
-        try {
-          const base64 = reader.result?.toString().split(",")[1];
-          if (!base64) {
-            throw new Error("Error al leer el archivo");
-          }
+      // Actualizar lista de documentos
+      const updatedDocs = await getDocumentos(id);
+      setDocumentos(updatedDocs);
 
-          // Obtener token del contexto o sessionStorage
-          const authToken = user ? sessionStorage.getItem("auth_token") : null;
-          
-          if (!authToken) {
-            throw new Error("No hay sesión activa. Por favor inicie sesión nuevamente.");
-          }
-
-          const payload = {
-            causaId: id,
-            tipo: tipoDocumento,
-            nombreOriginal: selectedFile.name,
-            contenido: base64,
-          };
-
-          // Obtener URL de API desde variables de entorno
-          const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
-
-          // Enviar al backend
-          const response = await fetch(`${apiUrl}/documentos`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${authToken}`,
-            },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || error.details?.[0]?.message || "Error al subir el documento");
-          }
-
-          await response.json();
-          
-          // Actualizar lista de documentos
-          const updatedDocs = await getDocumentos(id);
-          setDocumentos(updatedDocs);
-
-          // Cerrar diálogo y limpiar
-          setDialogOpen(false);
-          setSelectedFile(null);
-          setTipoDocumento("");
-          
-          toast({
-            title: "Documento subido",
-            description: "El documento se ha subido exitosamente",
-          });
-        } catch (error) {
-          toast({
-            variant: "destructive",
-            title: "Error al subir",
-            description: error instanceof Error ? error.message : "Error al subir el documento",
-          });
-          setUploading(false);
-        }
-      };
-
-      reader.onerror = () => {
-        toast({
-          variant: "destructive",
-          title: "Error de lectura",
-          description: "Error al leer el archivo",
-        });
-        setUploading(false);
-      };
+      // Cerrar diálogo y limpiar
+      setDialogOpen(false);
+      setSelectedFile(null);
+      setTipoDocumento("");
+      
+      toast({
+        title: "Documento subido",
+        description: "El documento se ha subido exitosamente",
+      });
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error al subir",
         description: error instanceof Error ? error.message : "Error al subir el documento",
       });
+    } finally {
       setUploading(false);
     }
   };
@@ -329,35 +275,7 @@ const ExpedienteCausa = () => {
   // SEGURIDAD: Validación de MIME type para prevenir DOM XSS
   const handleVerDocumento = async (docId: string) => {
     try {
-      const token = sessionStorage.getItem("auth_token");
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
-      const response = await fetch(`${apiUrl}/documentos/${docId}/ver`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Error al obtener el documento");
-      }
-
-      const blob = await response.blob();
-      
-      // SEGURIDAD: Validar tipo de archivo antes de abrir
-      const validation = validateBlobType(blob);
-      if (!validation.isValid) {
-        console.error("[SEGURIDAD] Intento de abrir archivo no permitido:", validation.detectedType);
-        toast({
-          variant: "destructive",
-          title: "Error de seguridad",
-          description: validation.error || "Tipo de archivo no permitido",
-        });
-        return;
-      }
-
-      // Abrir documento de forma segura
-      secureOpenDocument(blob);
+      await documentosService.verDocumento(docId);
     } catch (error) {
       console.error("Error al ver documento:", error);
       toast({
@@ -372,20 +290,7 @@ const ExpedienteCausa = () => {
   // SEGURIDAD: Sanitización de nombre y validación de MIME type para prevenir DOM XSS
   const handleDescargarDocumento = async (docId: string, nombreArchivo: string) => {
     try {
-      const token = sessionStorage.getItem("auth_token");
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
-      const response = await fetch(`${apiUrl}/documentos/${docId}/descargar`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Error al descargar el documento");
-      }
-
-      const blob = await response.blob();
+      const blob = await documentosService.descargarDocumento(docId);
       
       // SEGURIDAD: Validar tipo de archivo antes de descargar
       const validation = validateBlobType(blob);
