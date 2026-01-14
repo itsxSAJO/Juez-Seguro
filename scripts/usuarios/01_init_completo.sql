@@ -150,7 +150,7 @@ CREATE TRIGGER trigger_actualizar_fecha_funcionarios
 -- DATOS INICIALES: Roles del Sistema
 -- ============================================================================
 INSERT INTO roles (nombre, descripcion) VALUES
-    ('ADMIN', 'Consejo de la Judicatura - Administración y Supervisión del Sistema'),
+    ('ADMIN_CJ', 'Consejo de la Judicatura - Administración y Supervisión del Sistema'),
     ('JUEZ', 'Juez - Gestión de causas asignadas y emisión de decisiones judiciales'),
     ('SECRETARIO', 'Secretario Judicial - Gestión operativa de causas, documentos y audiencias')
 ON CONFLICT (nombre) DO NOTHING;
