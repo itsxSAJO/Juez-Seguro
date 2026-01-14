@@ -272,14 +272,14 @@ class AlertasService {
       const checkResult = await casesPool.query(checkQuery);
 
       if (checkResult.rows[0].exists) {
-        // Insertar en tabla existente
+        // Insertar en tabla existente (columnas correctas según el schema)
         const insertQuery = `
           INSERT INTO notificaciones_internas (
-            usuario_id,
+            destinatario_id,
             titulo,
             mensaje,
             tipo,
-            leida,
+            estado,
             causa_id,
             fecha_creacion
           ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -290,7 +290,7 @@ class AlertasService {
           notif.titulo,
           notif.mensaje,
           notif.tipo,
-          notif.leida,
+          notif.leida ? 'leida' : 'no_leida',
           notif.enlaceCausa || null,
         ]);
       } else {
@@ -331,15 +331,15 @@ class AlertasService {
           titulo,
           mensaje,
           tipo,
-          leida,
+          estado,
           causa_id,
           fecha_creacion
         FROM notificaciones_internas
-        WHERE usuario_id = $1
+        WHERE destinatario_id = $1
       `;
 
       if (soloNoLeidas) {
-        query += ` AND leida = false`;
+        query += ` AND estado = 'no_leida'`;
       }
 
       query += ` ORDER BY fecha_creacion DESC LIMIT 50`;
@@ -351,7 +351,7 @@ class AlertasService {
         titulo: row.titulo,
         mensaje: row.mensaje,
         tipo: row.tipo,
-        leida: row.leida,
+        leida: row.estado === 'leida',
         causaId: row.causa_id,
         fechaCreacion: row.fecha_creacion,
       }));
@@ -367,8 +367,8 @@ class AlertasService {
     try {
       const result = await casesPool.query(
         `UPDATE notificaciones_internas 
-         SET leida = true 
-         WHERE notificacion_id = $1 AND usuario_id = $2`,
+         SET estado = 'leida', fecha_lectura = NOW() 
+         WHERE notificacion_id = $1 AND destinatario_id = $2`,
         [notificacionId, usuarioId]
       );
       return (result.rowCount ?? 0) > 0;
@@ -384,7 +384,7 @@ class AlertasService {
     try {
       const result = await casesPool.query(
         `SELECT COUNT(*) as count FROM notificaciones_internas 
-         WHERE usuario_id = $1 AND leida = false`,
+         WHERE destinatario_id = $1 AND estado = 'no_leida'`,
         [usuarioId]
       );
       return parseInt(result.rows[0].count) || 0;

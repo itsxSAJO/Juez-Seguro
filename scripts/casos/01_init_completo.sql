@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS documentos (
     -- Auditoría
     fecha_subida TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     subido_por_id INTEGER,
+    subido_por_pseudonimo VARCHAR(50),
     fecha_eliminacion TIMESTAMPTZ,
     
     CONSTRAINT chk_estado_documento CHECK (estado IN ('activo', 'eliminado', 'borrador', 'pendiente', 'firmado', 'notificado'))
