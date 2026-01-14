@@ -103,6 +103,18 @@ const CambiarPasswordModal = ({ open, onSuccess }: CambiarPasswordModalProps) =>
         return;
       }
 
+      // Si se recibe un nuevo token, actualizar la autenticación
+      if (result.token && result.user) {
+        // Guardar el nuevo token en localStorage
+        localStorage.setItem("authToken", result.token);
+        localStorage.setItem("user", JSON.stringify(result.user));
+        sessionStorage.removeItem("requiereCambioPassword");
+        
+        // Forzar recarga para que el contexto tome el nuevo token
+        window.location.reload();
+        return;
+      }
+
       // Éxito - marcar que se completó el cambio de contraseña
       completarCambioPassword();
       onSuccess();

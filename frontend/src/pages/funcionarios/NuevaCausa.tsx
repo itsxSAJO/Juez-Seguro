@@ -204,25 +204,46 @@ const NuevaCausa = () => {
     } catch (error: any) {
       console.error("Error al crear causa:", error);
       
-      // Manejar error de scope (403 Forbidden)
-      if (error.message?.includes("Acceso denegado") || error.message?.includes("No tiene permisos")) {
-        setScopeError(error.message);
+      // Manejar error de conexión
+      if (error?.message === "Failed to fetch" || error?.name === "TypeError") {
         toast({
-          title: "Acceso Denegado",
-          description: error.message,
+          title: "❌ Error de Conexión",
+          description: "No se puede conectar con el servidor. Verifica que el backend esté corriendo.",
           variant: "destructive",
         });
-      } else if (error.message?.includes("Sin jueces disponibles") || error.message?.includes("No hay jueces")) {
-        setScopeError(error.message);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Obtener el mensaje y código del error (ApiError)
+      const errorMessage = error?.message || "Error al crear la causa";
+      const errorCode = error?.code;
+      
+      // Manejar error de scope (403 Forbidden)
+      if (errorCode === "MATERIA_NO_COINCIDE" || errorCode === "UNIDAD_NO_COINCIDE" || errorMessage.includes("Acceso denegado")) {
+        setScopeError(errorMessage);
         toast({
-          title: "Sin Jueces Disponibles",
-          description: error.message,
+          title: "⚠️ Acceso Denegado",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } else if (errorCode === "NO_JUECES_DISPONIBLES" || errorMessage.includes("No hay jueces")) {
+        setScopeError(errorMessage);
+        toast({
+          title: "⚠️ Sin Jueces Disponibles",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } else if (errorCode === "VALIDATION_ERROR") {
+        toast({
+          title: "⚠️ Error de Validación",
+          description: errorMessage,
           variant: "destructive",
         });
       } else {
         toast({
-          title: "Error al crear la causa",
-          description: error.message || "Ocurrió un error inesperado",
+          title: "❌ Error al crear la causa",
+          description: errorMessage,
           variant: "destructive",
         });
       }
