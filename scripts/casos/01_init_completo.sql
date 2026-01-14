@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS audiencias (
     -- Configuración Sprint 2
     modalidad VARCHAR(20) DEFAULT 'PRESENCIAL',
     enlace_videoconferencia VARCHAR(500),
+    duracion_minutos INTEGER DEFAULT 60,
     
     -- Estado
     estado VARCHAR(30) NOT NULL DEFAULT 'programada',
@@ -165,13 +166,14 @@ CREATE TABLE IF NOT EXISTS audiencias (
     -- Resultado de audiencia
     acta_audiencia TEXT,
     resultado VARCHAR(100),
-    duracion_minutos INTEGER,
     
-    -- Notas
+    -- Notas y observaciones
     notas TEXT,
+    observaciones TEXT,
     
     -- Auditoría Sprint 2
     creado_por_secretario_id INTEGER,
+    programado_por_id INTEGER,
     notificado_partes BOOLEAN DEFAULT FALSE,
     fecha_notificacion TIMESTAMPTZ,
     
