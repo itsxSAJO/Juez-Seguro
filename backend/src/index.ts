@@ -276,7 +276,8 @@ const startServer = async () => {
     log.info("✅ Conexiones establecidas", dbStatus);
 
     // Iniciar servidor HTTP con configuración aumentada para body grande
-    const server = app.listen(configBase.port, () => {
+    // Escuchar en 0.0.0.0 para permitir conexiones externas en Docker
+    const server = app.listen(configBase.port, '0.0.0.0', () => {
       log.info(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                    JUEZ SEGURO BACKEND                     ║

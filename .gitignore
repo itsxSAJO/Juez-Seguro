@@ -52,3 +52,4 @@ certificates/
 **/private_key*
 **/certificate*
 docs/DESPLIEGUE-AWS-EC2.md
+frontend/.env.development
