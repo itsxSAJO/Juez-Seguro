@@ -31,8 +31,9 @@ services:
       - pg_data_users:/var/lib/postgresql/data
     networks:
       - backend_secure_net
-    ports:
-      - "5435:5432" # Cambiado de 5432 a 5435 para evitar conflicto con PostgreSQL local
+    # DESARROLLO: Descomentar para acceder desde host
+    # ports:
+    #   - "5435:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin_users -d db_usuarios"]
       interval: 10s
@@ -60,8 +61,9 @@ services:
       - pg_data_cases:/var/lib/postgresql/data
     networks:
       - backend_secure_net
-    ports:
-      - "5433:5432"
+    # DESARROLLO: Descomentar para acceder desde host
+    # ports:
+    #   - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin_cases -d db_casos"]
       interval: 10s
@@ -89,8 +91,9 @@ services:
       - pg_data_logs:/var/lib/postgresql/data
     networks:
       - backend_secure_net
-    ports:
-      - "5434:5432"
+    # DESARROLLO: Descomentar para acceder desde host
+    # ports:
+    #   - "5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin_logs -d db_logs"]
       interval: 10s
@@ -118,8 +121,9 @@ services:
       - pg_data_secrets:/var/lib/postgresql/data
     networks:
       - backend_secure_net
-    ports:
-      - "5436:5432"
+    # DESARROLLO: Descomentar para acceder desde host
+    # ports:
+    #   - "5436:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin_secrets -d db_secrets"]
       interval: 10s
@@ -142,7 +146,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: production
+      # NODE_ENV: development para desarrollo, production para producción
+      NODE_ENV: ${NODE_ENV:-production}
       # Conexiones a las bases de datos
       DB_USERS_HOST: db_usuarios
       DB_USERS_PORT: 5432
@@ -247,9 +252,9 @@ services:
 networks:
   backend_secure_net:
     driver: bridge
-    # PRODUCCIÓN: Descomentar 'internal: true' para aislar la red
-    # Esto previene que los contenedores accedan a internet directamente
-    # internal: true
+    # PRODUCCIÓN: La red está aislada por defecto (internal: true)
+    # DESARROLLO: Comentar 'internal: true' si necesitas acceso a internet desde contenedores
+    internal: true
     ipam:
       config:
         - subnet: 172.28.0.0/16
