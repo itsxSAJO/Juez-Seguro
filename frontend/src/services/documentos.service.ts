@@ -76,11 +76,6 @@ export const documentosService = {
    * FORMATO: JSON con contenido en base64 (no FormData)
    */
   async subirDocumento(data: SubirDocumentoRequest): Promise<Documento> {
-    console.log('📤 Iniciando subida de documento:', {
-      nombre: data.nombre,
-      tamanoOriginal: data.archivo.size,
-      tipo: data.tipo
-    });
     
     // Convertir archivo a Base64 usando ArrayBuffer (más confiable que DataURL)
     const base64Content = await new Promise<string>((resolve, reject) => {
@@ -94,10 +89,6 @@ export const documentosService = {
           binary += String.fromCharCode(bytes[i]);
         }
         const base64 = btoa(binary);
-        console.log('✅ Archivo convertido a base64:', {
-          tamanoArrayBuffer: arrayBuffer.byteLength,
-          tamanoBase64: base64.length
-        });
         resolve(base64);
       };
       reader.onerror = () => {
@@ -122,16 +113,7 @@ export const documentosService = {
       nombreOriginal: data.nombre,
       contenido: base64Content,
     };
-
-    console.log('📦 Preparando payload:', {
-      causaId: payload.causaId,
-      tipo: payload.tipo,
-      nombreOriginal: payload.nombreOriginal,
-      longitudContenido: payload.contenido.length
-    });
-
     const bodyString = JSON.stringify(payload);
-    console.log('📤 Body string generado, longitud total:', bodyString.length);
 
     const response = await fetch(`${API_BASE_URL}/documentos`, {
       method: "POST",
