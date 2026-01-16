@@ -203,16 +203,6 @@ const LoginFuncionarios = () => {
                 </Button>
               </form>
             </Form>
-
-            {/* Demo credentials */}
-            <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-border">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Credenciales de prueba:</p>
-              <div className="space-y-1 text-xs text-muted-foreground font-mono">
-                <p><span className="text-foreground font-semibold">Admin CJ:</span> admin.cj@judicatura.gob.ec</p>
-                <p><span className="text-foreground font-semibold">Juez:</span> juez.gutierrez@judicatura.gob.ec</p>
-                <p><span className="text-foreground font-semibold">Secretario:</span> secretario.paredes@judicatura.gob.ec</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
 

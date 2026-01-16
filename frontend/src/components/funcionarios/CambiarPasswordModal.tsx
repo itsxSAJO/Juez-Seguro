@@ -11,6 +11,7 @@ import { Eye, EyeOff, Lock, AlertCircle, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -62,12 +63,13 @@ interface CambiarPasswordModalProps {
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
 const CambiarPasswordModal = ({ open, onSuccess }: CambiarPasswordModalProps) => {
-  const { token, logout, completarCambioPassword } = useAuth();
+  const { token, logout } = useAuth();
   const [showPasswordActual, setShowPasswordActual] = useState(false);
   const [showPasswordNueva, setShowPasswordNueva] = useState(false);
   const [showConfirmar, setShowConfirmar] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const form = useForm<CambiarPasswordFormData>({
     resolver: zodResolver(cambiarPasswordSchema),
@@ -103,22 +105,17 @@ const CambiarPasswordModal = ({ open, onSuccess }: CambiarPasswordModalProps) =>
         return;
       }
 
-      // Si se recibe un nuevo token, actualizar la autenticación
-      if (result.token && result.user) {
-        // Limpiar todo el almacenamiento local
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("user");
-        sessionStorage.removeItem("auth_token");
-        sessionStorage.removeItem("requiereCambioPassword");
-        
-        // Redirigir al login para que inicie sesión con la nueva contraseña
-        window.location.href = "/login";
-        return;
-      }
+      toast({
+        title: "Contraseña actualizada correctamente",
+        description: "Por favor, inicie sesión nuevamente con sus nuevas credenciales.",
+        duration: 5000,
+      });
 
-      // Éxito - marcar que se completó el cambio de contraseña
-      completarCambioPassword();
-      onSuccess();
+      setTimeout(() => {
+        logout();
+        window.location.href = "/funcionarios/login"; 
+      }, 1500);
+
     } catch (err) {
       setError("Error de conexión. Intente nuevamente.");
       setIsLoading(false);
