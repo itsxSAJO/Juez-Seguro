@@ -53,3 +53,10 @@ certificates/
 **/certificate*
 docs/DESPLIEGUE-AWS-EC2.md
 frontend/.env.development
+
+# Scripts de producción y setup
+*.sh
+*.ps1
+setup_pki.sh
+setup_pki.ps1
+generate-production-env.sh

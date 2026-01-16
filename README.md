@@ -6,25 +6,6 @@ Sistema Judicial Electrónico con controles de seguridad basados en **Common Cri
 
 ---
 
-## � Despliegue en Producción (AWS EC2)
-
-**✨ Este repositorio está listo para producción sin modificaciones manuales.**
-
-Para desplegar en AWS EC2, sigue la guía completa: **[DESPLIEGUE-AWS-EC2.md](docs/DESPLIEGUE-AWS-EC2.md)**
-
-**Inicio rápido:**
-1. Clonar rama `production`
-2. Configurar `.env` con contraseñas seguras
-3. Ejecutar `docker-compose up -d --build`
-
-**Ya incluye:**
-- ✅ NODE_ENV=production por defecto
-- ✅ Puertos de BD no expuestos
-- ✅ Red Docker aislada
-- ✅ Configuración production-ready
-
----
-
 ## �📁 Estructura del Proyecto
 
 ```
@@ -186,7 +167,7 @@ cd backend && npm run dev
 # Frontend (modo desarrollo)
 cd frontend && npm run dev
 
-# Build producción
+# Build
 cd backend && npm run build
 cd frontend && npm run build
 ```
